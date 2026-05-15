@@ -36,9 +36,10 @@
 - [x] **Phase 1.1** — fix: Area (`XX-YY`) folders never demoted/stripped (`2ec97ec2`)
 - [x] **Phase 1.5** — MODEL PIVOT: system-prefix-on-every-name → **system = top folder** + managed systems list. Clean unprefixed area/cat/ID names; system derived from path. Rewrote parser/validator; system-aware create-system/area + modals; settings systems manager; `defaultSystemPrefix`→`systems[]` migration; engine simplified (no system cascade — cross-system move = pure path change). Lint+build green.
 - [ ] **Phase 6** — JDex auto-sync (design locked, see below)
+- [ ] **Phase 7** — vault numbering audit (design locked, see below)
 - [ ] **Phase 2** — context-aware right-click menu
 - [ ] **Phase 3** — create-time prefixing
-- [ ] **Phase 4** — roadmap commands (incl. area-range renumber)
+- [ ] **Phase 4** — roadmap commands (renumber/range-remap items absorbed into Phase 7 audit fix engine)
 - [ ] **Phase 5** — polish + test harness
 
 ## Reference Plugin — What We Can Port
@@ -195,6 +196,109 @@ write when content is unchanged.**
       (Lean: markers in v1 — cheap, prevents clobbering user notes in JDex.)
 - [ ] Per-system JDex sectioning is currently absent (flat range-sorted);
       out of scope for sync, tracked as a separate JDex-format improvement.
+
+## Phase 7 — Vault Numbering Audit (design)
+
+Goal: a command that audits the whole vault for numbering correctness and
+proposes (then, on confirm, applies) fixes — beyond the passive
+naming/structure errors `validateVault` already reports.
+
+### Relationship to existing pieces
+
+- `validateVault` (validator.ts) already detects INVALID/DUPLICATE/OUTSIDE
+  name + structure errors and powers the "Validate vault" command. The audit
+  **builds on** its result and adds numbering-specific analyzers + a
+  remediation (fix) path. It does not replace the validator.
+- The audit's apply step IS the general renumber engine. Phase 4's
+  "renumber-children" / "area-range remap" roadmap items become thin callers
+  of the audit fix engine — Phase 7 absorbs them (note in Phase 4).
+
+### Numbering rules audited (system-folder model)
+
+| Level | Rule | Severity if violated |
+|-------|------|----------------------|
+| System | folder `CODE Name`; CODE = `^[A-Z]\d{2}$`; registered in settings; unique | ERROR (UNKNOWN/INVALID), ERROR (DUPLICATE) |
+| Area | `XX-YY` spans exactly 10; start multiple of 10; within 00–99; unique per system | ERROR |
+| Category | 2-digit; within parent area `[rangeStart,rangeEnd]`; unique within area | ERROR |
+| ID | `XX.YY`; `XX` **equals** parent category number; `YY` 01–99; unique within category | ERROR (misfiled / dup) |
+| Any | zero-pad correct (`1.1` → `01.01`) | WARN (cosmetic but breaks sort/parse) |
+| Category / ID | numbering gaps (holes in sequence) | INFO only — JD permits gaps; never auto-closed by default (renumber breaks links) |
+
+Reuses `validateVault` for the structural subset; new analyzers add: padding
+errors, gap detection (INFO), system-code/folder mismatch, and duplicate
+classification with an explicit tiebreak.
+
+### Severity model
+
+- **ERROR** — breaks JD addressing; fixable; checked by default in preview.
+- **WARN** — ambiguous or cosmetic-but-impactful (padding; a duplicate where
+  "which keeps its number?" needs a rule); checked by default, tiebreak shown.
+- **INFO** — gaps / non-contiguous sequences; *unchecked* by default;
+  fixing = renumber = link risk, strictly opt-in.
+
+Duplicate tiebreak rule (shown in preview before apply): keep the entry with
+the lexicographically lowest path (stable, deterministic); the loser is
+renumbered via the **highest + 1** policy (consistent with the engine).
+
+### Architecture
+
+- `core/auditor.ts` — pure: takes `validateVault` result + raw tree, emits an
+  `AuditReport { findings: AuditFinding[] }`.
+  `AuditFinding { severity, kind, path, message, fix?: FixAction }`.
+  `FixAction` is declarative (`{type:'rename', from, to}[]`) — computed, not
+  executed.
+- `applyFixes(plugin, fixes)` executes them through the **shared
+  recursion-safe rename** (see prerequisite) — serialized, re-resolving each
+  target by path between steps (engine pattern), deepest-first (IDs →
+  categories → areas) so a parent rename doesn't invalidate queued child
+  paths.
+- Respects exclusions: inherited via `validateVault`, and explicitly
+  `isExcluded`-gated in the extra analyzers.
+
+### Prerequisite refactor (Phase 1.x)
+
+Extract the recursion-safe rename + serialized chain + `inFlight` guard out of
+`RenameEngine` into a shared `core/rename-queue.ts`. Then `RenameEngine`, the
+auditor's `applyFixes`, and Phase 4 renumber commands all reuse one
+implementation instead of three copies. Small, isolated, do before Phase 7.
+
+### UX (two-phase, no silent data loss)
+
+1. Command **"Audit numbering"** → runs auditor → `AuditReportModal`:
+   findings grouped by severity; each fixable finding has a checkbox
+   (ERROR/WARN checked, INFO unchecked); duplicate tiebreaks and exact
+   `from → to` renames shown.
+2. **"Apply selected"** → explicit confirm → batched renames through the
+   shared queue → re-audit → show residual findings. Nothing mutates without
+   the confirm step. Gap-fill and area-range remap are opt-in toggles in the
+   modal, default off (link-risk warning shown).
+
+### Scope
+
+- **v1:** report + safe fixes — padding normalization; misfiled-ID move when
+  the correct target number is free; duplicate resolution with tiebreak
+  preview. Read-preservation comes free via `fileManager.renameFile`.
+- **v2:** gap-fill (opt-in), area-range remap (opt-in, cascades to
+  categories/IDs), bulk renumber-to-compact.
+- **Out of scope:** rewriting link text beyond what `fileManager.renameFile`
+  already preserves; editing note bodies.
+
+### Build order
+
+1. Phase 1.x prerequisite: extract shared `rename-queue.ts`; engine reuses it
+   (no behavior change — verify in test vault).
+2. `core/auditor.ts` analyzers + `AuditReport` types (pure, unit-testable).
+3. `AuditReportModal` (grouped, checkboxes, tiebreak/from→to display).
+4. `applyFixes` via shared queue (deepest-first, re-resolve by path).
+5. "Audit numbering" command wiring + re-audit-after-apply loop.
+6. v2 opt-in fixers (gap-fill, range remap).
+
+### Open
+
+- [ ] Should "Audit numbering" auto-run after big operations, or stay
+      manual-only? (Lean: manual command in v1; optional post-op nudge later.)
+- [ ] Gap INFO: surface always, or behind a "show gaps" toggle to reduce
+      noise in large vaults? (Lean: behind toggle, default off.)
 
 ## Phased Roadmap
 
