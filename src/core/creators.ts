@@ -135,6 +135,55 @@ export async function createId(
 	}
 }
 
+/**
+ * Create the next area under `system` (or the root, single-system),
+ * auto-picking the first free decade — mirrors the rename engine's policy.
+ */
+export async function createNextArea(
+	plugin: JohnnyDecimalPlugin,
+	system: JDSystem | null,
+	name: string
+): Promise<void> {
+	const result = validateVault(plugin.app, plugin.settings);
+	const code = system ? system.code : null;
+	const used = new Set(
+		result.areas.filter(a => a.system === code).map(a => a.rangeStart)
+	);
+
+	let start = 0;
+	while (start <= 90 && used.has(start)) start += 10;
+	if (start > 90) {
+		new Notice('No free area range (00-09 … 90-99 all used)');
+		return;
+	}
+	await createArea(plugin, system, start, name);
+}
+
+/**
+ * Create the next category in `area`, auto-picking the first free number
+ * within the area range.
+ */
+export async function createNextCategory(
+	plugin: JohnnyDecimalPlugin,
+	area: JDArea,
+	name: string
+): Promise<void> {
+	const result = validateVault(plugin.app, plugin.settings);
+	const used = new Set(
+		result.categories
+			.filter(c => c.parentArea.path === area.path)
+			.map(c => c.number)
+	);
+
+	let n = area.rangeStart;
+	while (n <= area.rangeEnd && used.has(n)) n++;
+	if (n > area.rangeEnd) {
+		new Notice(`Area ${area.rangeStart}-${area.rangeEnd} is full`);
+		return;
+	}
+	await createCategory(plugin, area, n, name);
+}
+
 function msg(err: unknown): string {
 	return err instanceof Error ? err.message : String(err);
 }

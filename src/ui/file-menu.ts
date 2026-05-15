@@ -1,18 +1,22 @@
 /**
- * Context-aware right-click menu. The items offered depend on the JD level of
- * the clicked folder, and each opens the matching create modal with the
- * clicked target preselected. Also a one-click exclude/include toggle.
+ * Context-aware right-click menu. Items depend on the JD level of the clicked
+ * folder and create the next item directly — the clicked folder IS the parent
+ * and the number/ID is auto-assigned; only a name is asked. Plus a one-click
+ * exclude/include toggle.
  */
 
 import {Menu, TAbstractFile, TFolder, Notice} from 'obsidian';
 import type JohnnyDecimalPlugin from '../main';
 import {validateVault} from '../core/validator';
 import {isExcluded} from '../core/exclusions';
-import {createSystem, createArea, createCategory, createId} from '../core/creators';
+import {
+	createSystem,
+	createNextArea,
+	createNextCategory,
+	createId,
+} from '../core/creators';
 import {CreateSystemModal} from './create-system-modal';
-import {CreateAreaModal} from './create-area-modal';
-import {CreateCategoryModal} from './create-category-modal';
-import {CreateIdModal} from './create-id-modal';
+import {NamePromptModal} from './name-prompt-modal';
 
 export function registerFileMenu(plugin: JohnnyDecimalPlugin): void {
 	plugin.registerEvent(
@@ -31,7 +35,6 @@ function buildMenu(
 	const path = file.path;
 	const excluded = isExcluded(path, settings.exclusions);
 
-	// Exclude / include toggle — always available.
 	menu.addItem(item =>
 		item
 			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Johnny Decimal" is a proper noun
@@ -53,7 +56,6 @@ function buildMenu(
 			})
 	);
 
-	// An excluded path is frozen — no create actions.
 	if (excluded || !(file instanceof TFolder)) return;
 
 	const result = validateVault(plugin.app, settings);
@@ -63,8 +65,10 @@ function buildMenu(
 	const multi = settings.systems.length > 0;
 	const rootFolder = settings.rootFolder;
 	const isRoot = file.isRoot() || (rootFolder !== '' && path === rootFolder);
-
 	const app = plugin.app;
+
+	const prompt = (title: string, run: (name: string) => void) =>
+		new NamePromptModal(app, title, run).open();
 
 	if (cat) {
 		menu.addItem(item =>
@@ -72,14 +76,9 @@ function buildMenu(
 				// eslint-disable-next-line obsidianmd/ui/sentence-case
 				.setTitle('New JD ID here')
 				.setIcon('file-plus')
-				.onClick(() => {
-					new CreateIdModal(
-						app,
-						result.categories,
-						(c, n) => createId(plugin, c, n),
-						cat.path
-					).open();
-				})
+				.onClick(() =>
+					prompt('New ID', n => void createId(plugin, cat, n))
+				)
 		);
 	} else if (area) {
 		menu.addItem(item =>
@@ -87,15 +86,11 @@ function buildMenu(
 				// eslint-disable-next-line obsidianmd/ui/sentence-case
 				.setTitle('New JD category here')
 				.setIcon('folder-plus')
-				.onClick(() => {
-					new CreateCategoryModal(
-						app,
-						result.areas,
-						result.categories,
-						(a, num, n) => createCategory(plugin, a, num, n),
-						area.path
-					).open();
-				})
+				.onClick(() =>
+					prompt('New category', n =>
+						void createNextCategory(plugin, area, n)
+					)
+				)
 		);
 	} else if (sys) {
 		menu.addItem(item =>
@@ -103,15 +98,9 @@ function buildMenu(
 				// eslint-disable-next-line obsidianmd/ui/sentence-case
 				.setTitle('New JD area here')
 				.setIcon('folder-plus')
-				.onClick(() => {
-					new CreateAreaModal(
-						app,
-						result.systems,
-						result.areas,
-						(s, r, n) => createArea(plugin, s, r, n),
-						sys.code
-					).open();
-				})
+				.onClick(() =>
+					prompt('New area', n => void createNextArea(plugin, sys, n))
+				)
 		);
 	} else if (isRoot) {
 		if (multi) {
@@ -132,14 +121,9 @@ function buildMenu(
 					// eslint-disable-next-line obsidianmd/ui/sentence-case
 					.setTitle('New JD area here')
 					.setIcon('folder-plus')
-					.onClick(() => {
-						new CreateAreaModal(
-							app,
-							result.systems,
-							result.areas,
-							(s, r, n) => createArea(plugin, s, r, n)
-						).open();
-					})
+					.onClick(() =>
+						prompt('New area', n => void createNextArea(plugin, null, n))
+					)
 			);
 		}
 	}
