@@ -42,7 +42,19 @@ export default class JohnnyDecimalPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		const raw = (await this.loadData() ?? {}) as Partial<JDSettings> & {ignorePatterns?: string[]};
+		const raw = (await this.loadData() ?? {}) as Partial<JDSettings> & {
+			ignorePatterns?: string[];
+			defaultSystemPrefix?: string;
+		};
+
+		// One-time migration: old single `defaultSystemPrefix` string → the
+		// managed `systems` list (system-as-folder model). Seed name = code;
+		// user can rename it in settings. Only when `systems` is absent.
+		if (raw.defaultSystemPrefix && raw.systems === undefined) {
+			const code = raw.defaultSystemPrefix;
+			raw.systems = [{code, name: code}];
+		}
+		delete raw.defaultSystemPrefix;
 
 		// One-time migration: old `ignorePatterns` (exact folder names matched
 		// at any depth) → `exclusions` as `**/<name>/**` globs, the

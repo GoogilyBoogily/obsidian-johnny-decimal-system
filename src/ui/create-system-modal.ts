@@ -1,10 +1,11 @@
 import {Modal, Setting, Notice} from 'obsidian';
 import type {App} from 'obsidian';
+import {isValidSystemCode} from '../core/parser';
 
 export class CreateSystemModal extends Modal {
-	private onSubmit: (prefix: string) => Promise<void>;
+	private onSubmit: (code: string, name: string) => Promise<void>;
 
-	constructor(app: App, onSubmit: (prefix: string) => Promise<void>) {
+	constructor(app: App, onSubmit: (code: string, name: string) => Promise<void>) {
 		super(app);
 		this.onSubmit = onSubmit;
 	}
@@ -14,15 +15,26 @@ export class CreateSystemModal extends Modal {
 		contentEl.empty();
 		contentEl.createEl('h2', {text: 'Create system'});
 
-		let prefix = '';
+		let code = '';
+		let name = '';
 
 		new Setting(contentEl)
-			.setName('System prefix')
+			.setName('System code')
 			// eslint-disable-next-line obsidianmd/ui/sentence-case
-			.setDesc('Format: Letter + 2 digits (H01, W01)')
+			.setDesc('Letter + 2 digits (e.g. H01, W01)')
 			.addText(text =>
 				text.setPlaceholder('H01').onChange(value => {
-					prefix = value.toUpperCase();
+					code = value.toUpperCase().trim();
+				})
+			);
+
+		new Setting(contentEl)
+			.setName('System name')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setDesc('Display name (e.g. "Personal")')
+			.addText(text =>
+				text.setPlaceholder('Personal').onChange(value => {
+					name = value.trim();
 				})
 			);
 
@@ -31,12 +43,15 @@ export class CreateSystemModal extends Modal {
 				.setButtonText('Create')
 				.setCta()
 				.onClick(async () => {
-					if (!/^[A-Z]\d{2}$/.test(prefix)) {
-						// eslint-disable-next-line obsidianmd/ui/sentence-case
-						new Notice('Invalid prefix format. Use letter + 2 digits (H01)');
+					if (!isValidSystemCode(code)) {
+						new Notice('Invalid code. Use letter + 2 digits (e.g. H01)');
 						return;
 					}
-					await this.onSubmit(prefix);
+					if (!name) {
+						new Notice('Enter a system name');
+						return;
+					}
+					await this.onSubmit(code, name);
 					this.close();
 				})
 		);

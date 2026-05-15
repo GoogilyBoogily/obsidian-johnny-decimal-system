@@ -87,7 +87,8 @@ export class CreateCategoryModal extends Modal {
 
 		areaSetting.addDropdown(dropdown => {
 			for (const area of this.areas) {
-				const label = `${area.rangeStart}-${area.rangeEnd} ${area.name}`;
+				const sys = area.system ? `${area.system} ` : '';
+				const label = `${sys}${area.rangeStart}-${area.rangeEnd} ${area.name}`;
 				dropdown.addOption(area.path, label);
 			}
 			dropdown.setValue(selectedArea.path);

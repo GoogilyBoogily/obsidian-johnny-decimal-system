@@ -1,40 +1,39 @@
 /**
- * Auto-prefix engine: assigns and propagates Johnny Decimal prefixes in
+ * Auto-prefix engine: assigns and propagates Johnny Decimal numbers in
  * response to vault rename/move events.
+ *
+ * Model: systems are a top-level folder layer ("CODE Name"); area/category/ID
+ * names are CLEAN (no system prefix). The system is derived from the path, so
+ * moving an item between systems is a pure path change — NO rename needed and
+ * no subtree cascade. The only propagation left is a category-number edit
+ * rewriting its child ID files (their names embed "XX.YY").
  *
  * Behaviors
  * ---------
- *  - Folder moved into an Area    → assigned the next free category number
- *  - .md file moved into Category → assigned the next free ID number
- *  - Category prefix edited       → child ID files rewritten (number + system
- *                                   inherited; each child's own ID + name kept)
- *  - Area prefix edited (system)  → category children + their IDs rewritten
- *  - Item moved out of JD         → prefix stripped (if stripPrefixOnExit)
+ *  - Folder moved into an Area    → next free category number
+ *  - .md file moved into Category → next free ID number
+ *  - Category number edited       → child ID files rewritten (id + name kept)
+ *  - Item moved out of JD         → number prefix stripped (stripPrefixOnExit)
+ *  - System / Area folders        → never recategorized or stripped
  *  - Anything excluded            → frozen (no-op)
  *
- * Scope (Phase 1): propagation covers SYSTEM-prefix cascade and CATEGORY-number
- * → child-ID rewrite. Area-range remap (e.g. 10-19 → 20-29 forcing 11→21) is a
- * renumber operation, intentionally deferred to the Phase 4 renumber command.
+ * Out of scope (Phase 4): area-range remap forcing category renumber.
  *
- * Safety
- * ------
- * Plugin-issued renames fire further rename events. Each programmatic write
- * registers its destination in `inFlight`; the handler self-cancels when it
- * observes its own write, preventing infinite recursion. All work is serialized
- * through a single promise chain — Obsidian emits rename events faster than
- * subtree rewrites complete, and concurrent rewrites corrupt numbering.
+ * Safety: plugin-issued renames echo back as rename events; each programmatic
+ * write registers its destination in `inFlight` and the handler self-cancels
+ * on its own write. All work serialized through one promise chain.
  */
 
 import {App, TAbstractFile, TFile, TFolder, Notice} from 'obsidian';
 import type JohnnyDecimalPlugin from '../main';
 import {isExcluded} from './exclusions';
 import {
+	parseSystem,
 	parseArea,
 	parseCategory,
 	parseId,
 	formatCategoryName,
 	formatIdName,
-	extractSystemPrefix,
 	isCategoryInArea,
 } from './parser';
 import type {ParsedArea, ParsedCategory} from '../types';
@@ -44,13 +43,11 @@ function dirOf(path: string): string {
 	return i === -1 ? '' : path.slice(0, i);
 }
 
-/** Strip a leading system prefix and JD number token, returning the plain name. */
+/** Strip a leading JD number token (area/category/id), returning the plain name. */
 function plainName(rawBasename: string): string {
 	const noExt = rawBasename.replace(/\.md$/, '');
-	const {rest} = extractSystemPrefix(noExt);
-	// area "NN-NN ", category "NN ", or id "NN.NN " leading token
-	const m = rest.match(/^\d{2}(?:-\d{2}|\.\d{2})?\s+(.*)$/);
-	return (m && m[1] ? m[1] : rest).trim();
+	const m = noExt.match(/^\d{2}(?:-\d{2}|\.\d{2})?\s+(.*)$/);
+	return (m && m[1] ? m[1] : noExt).trim();
 }
 
 export class RenameEngine {
@@ -71,7 +68,6 @@ export class RenameEngine {
 	handleRename = (file: TAbstractFile, oldPath: string): void => {
 		if (!this.plugin.settings.autoPrefixEnabled) return;
 
-		// Our own write echoing back — consume the guard and stop.
 		if (this.inFlight.has(file.path)) {
 			this.inFlight.delete(file.path);
 			return;
@@ -96,42 +92,42 @@ export class RenameEngine {
 		if (!parent) return;
 
 		const moved = dirOf(oldPath) !== parent.path;
+
+		// A System folder ("CODE Name") or an Area folder ("XX-YY Name") is
+		// structural — never demote or strip it.
+		if (file instanceof TFolder) {
+			if (parseSystem(file.name)) return;
+			if (parseArea(file.name)) return;
+		}
+
 		const area = parseArea(parent.name);
 		const category = parseCategory(parent.name);
 
-		// --- The item is ITSELF an Area (range name) ---
-		// An "XX-YY Name" folder is structurally an Area wherever it sits.
-		// Never demote it to a category and never strip its range. Only
-		// cascade a system-prefix edit to its children when edited in place.
-		if (file instanceof TFolder && parseArea(file.name)) {
-			if (!moved) await this.propagateArea(file);
-			return;
-		}
-
-		// --- Category slot: a non-area folder directly inside an Area ---
+		// Category slot: a non-area folder directly inside an Area.
 		if (area && file instanceof TFolder) {
 			await this.assignCategory(file, area);
 			return;
 		}
 
-		// --- ID slot: a .md file living directly inside a Category ---
+		// ID slot: a .md file directly inside a Category.
 		if (category && file instanceof TFile && file.name.endsWith('.md')) {
-			const grandArea = file.parent?.parent
-				? parseArea(file.parent.parent.name)
-				: null;
-			await this.assignId(file, category, grandArea);
+			await this.assignId(file, category);
 			return;
 		}
 
-		// --- In-place prefix edit on a Category → propagate to ID children ---
-		// (Area self-edits are handled by the area short-circuit above.)
+		// In-place category-number edit → rewrite child ID files.
 		if (!moved && file instanceof TFolder && parseCategory(file.name)) {
 			await this.propagateCategory(file);
 			return;
 		}
 
-		// --- Moved out of the JD structure → strip prefix ---
-		if (moved && this.plugin.settings.stripPrefixOnExit && !area && !category) {
+		// Moved out of the JD structure → strip the number prefix.
+		if (
+			moved &&
+			this.plugin.settings.stripPrefixOnExit &&
+			!area &&
+			!category
+		) {
 			await this.stripPrefix(file);
 		}
 	}
@@ -152,24 +148,16 @@ export class RenameEngine {
 		}
 
 		const existing = parseCategory(folder.name);
-		// Already correctly numbered and in range — nothing to do.
 		if (
 			existing &&
 			isCategoryInArea(existing.number, area) &&
-			!used.has(existing.number) &&
-			existing.system === area.system
+			!used.has(existing.number)
 		) {
 			return;
 		}
 
 		let next = area.rangeStart;
-		for (let n = area.rangeStart; n <= area.rangeEnd; n++) {
-			if (!used.has(n)) {
-				next = n;
-				break;
-			}
-			next = n + 1;
-		}
+		while (next <= area.rangeEnd && used.has(next)) next++;
 		if (next > area.rangeEnd) {
 			new Notice(
 				`Area ${area.rangeStart}-${area.rangeEnd} is full — no free category number.`
@@ -177,12 +165,10 @@ export class RenameEngine {
 			return;
 		}
 
-		const name = plainName(folder.name);
-		const newName = formatCategoryName(next, name, area.system);
+		const newName = formatCategoryName(next, plainName(folder.name));
 		const newPath = `${parent.path}/${newName}`;
 		await this.safeRename(folder, newPath);
 
-		// New category number → existing ID children must follow.
 		const moved = this.app.vault.getAbstractFileByPath(newPath);
 		if (moved instanceof TFolder) await this.propagateCategory(moved);
 	}
@@ -190,13 +176,10 @@ export class RenameEngine {
 	/** Assign the next free ID number within `category` to `file`. */
 	private async assignId(
 		file: TFile,
-		category: ParsedCategory,
-		area: ParsedArea | null
+		category: ParsedCategory
 	): Promise<void> {
 		const parent = file.parent;
 		if (!parent) return;
-
-		const system = area ? area.system : category.system;
 
 		const used = new Set<number>();
 		for (const sib of parent.children) {
@@ -209,8 +192,7 @@ export class RenameEngine {
 		if (
 			existing &&
 			existing.category === category.number &&
-			!used.has(existing.id) &&
-			existing.system === system
+			!used.has(existing.id)
 		) {
 			return;
 		}
@@ -222,42 +204,14 @@ export class RenameEngine {
 			return;
 		}
 
-		const name = plainName(file.name);
-		const newName = formatIdName(category.number, next, name, system);
+		const newName = formatIdName(category.number, next, plainName(file.name));
 		const newPath = `${parent.path}/${newName}.md`;
 		await this.safeRename(file, newPath);
 	}
 
-	/** Cascade an Area's system prefix to its category children (and IDs). */
-	private async propagateArea(areaFolder: TFolder): Promise<void> {
-		const parsed = parseArea(areaFolder.name);
-		if (!parsed) return;
-
-		for (const child of [...areaFolder.children]) {
-			if (!(child instanceof TFolder)) continue;
-			if (isExcluded(child.path, this.exclusions)) continue;
-			const cat = parseCategory(child.name);
-			if (!cat) continue;
-
-			const newName = formatCategoryName(
-				cat.number,
-				cat.name,
-				parsed.system
-			);
-			if (newName !== child.name) {
-				const newPath = `${areaFolder.path}/${newName}`;
-				await this.safeRename(child, newPath);
-				const moved = this.app.vault.getAbstractFileByPath(newPath);
-				if (moved instanceof TFolder) await this.propagateCategory(moved);
-			} else {
-				await this.propagateCategory(child);
-			}
-		}
-	}
-
 	/**
 	 * Rewrite a Category's ID children so each inherits the category's number
-	 * and system prefix while keeping its own ID digits and name.
+	 * while keeping its own ID digits and name.
 	 */
 	private async propagateCategory(catFolder: TFolder): Promise<void> {
 		const cat = parseCategory(catFolder.name);
@@ -269,27 +223,19 @@ export class RenameEngine {
 			const id = parseId(child.name);
 			if (!id) continue;
 
-			const newBase = formatIdName(
-				cat.number,
-				id.id,
-				id.name,
-				cat.system
-			);
-			const newName = `${newBase}.md`;
+			const newName = `${formatIdName(cat.number, id.id, id.name)}.md`;
 			if (newName !== child.name) {
 				await this.safeRename(child, `${catFolder.path}/${newName}`);
 			}
 		}
 	}
 
-	/** Remove the JD prefix from an item moved outside the structure. */
+	/** Remove the JD number prefix from an item moved outside the structure. */
 	private async stripPrefix(file: TAbstractFile): Promise<void> {
 		const isMd = file instanceof TFile && file.name.endsWith('.md');
 		const base = isMd ? file.name.replace(/\.md$/, '') : file.name;
 
-		// Only act if it actually carries a JD prefix.
-		const {rest} = extractSystemPrefix(base);
-		if (!/^\d{2}(?:-\d{2}|\.\d{2})?\s+/.test(rest) && rest === base) return;
+		if (!/^\d{2}(?:-\d{2}|\.\d{2})?\s+/.test(base)) return;
 
 		const plain = plainName(file.name);
 		if (!plain || plain === base) return;
@@ -302,8 +248,8 @@ export class RenameEngine {
 	}
 
 	/**
-	 * Rename guarded against recursion. Uses fileManager.renameFile for .md
-	 * (preserves wikilinks/backlinks) and vault.rename for folders.
+	 * Rename guarded against recursion. fileManager.renameFile for .md
+	 * (preserves wikilinks/backlinks), vault.rename for folders.
 	 */
 	private async safeRename(
 		file: TAbstractFile,

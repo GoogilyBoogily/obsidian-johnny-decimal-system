@@ -2,6 +2,7 @@ import {TFolder, TFile} from 'obsidian';
 import type {App} from 'obsidian';
 import type {JDSettings} from '../settings';
 import type {
+	JDSystem,
 	JDArea,
 	JDCategory,
 	JDId,
@@ -9,6 +10,7 @@ import type {
 	ValidationResult,
 } from '../types';
 import {
+	parseSystem,
 	parseArea,
 	parseCategory,
 	parseId,
@@ -18,11 +20,16 @@ import {
 } from './parser';
 import {isExcluded} from './exclusions';
 
+interface Acc {
+	errors: ValidationError[];
+	areas: JDArea[];
+	categories: JDCategory[];
+	ids: JDId[];
+}
+
 export function validateVault(app: App, settings: JDSettings): ValidationResult {
-	const errors: ValidationError[] = [];
-	const areas: JDArea[] = [];
-	const categories: JDCategory[] = [];
-	const ids: JDId[] = [];
+	const acc: Acc = {errors: [], areas: [], categories: [], ids: []};
+	const systems: JDSystem[] = [];
 
 	const rootPath = settings.rootFolder || '';
 	const root = rootPath
@@ -30,23 +37,83 @@ export function validateVault(app: App, settings: JDSettings): ValidationResult 
 		: app.vault.getRoot();
 
 	if (!root || !(root instanceof TFolder)) {
-		errors.push({
+		acc.errors.push({
 			type: 'INVALID_AREA_NAME',
 			path: rootPath,
 			message: `Root folder "${rootPath}" not found`,
 		});
-		return {valid: false, errors, areas, categories, ids};
+		return {valid: false, errors: acc.errors, systems, ...rest(acc)};
 	}
 
-	// Scan first level: areas
-	for (const child of root.children) {
+	const multiSystem = settings.systems.length > 0;
+	const knownCodes = new Set(settings.systems.map(s => s.code));
+
+	if (multiSystem) {
+		for (const child of root.children) {
+			if (!(child instanceof TFolder)) continue;
+			if (isExcluded(child.path, settings.exclusions)) continue;
+
+			const parsed = parseSystem(child.name);
+			if (!parsed) {
+				acc.errors.push({
+					type: 'INVALID_SYSTEM_NAME',
+					path: child.path,
+					message: `Invalid system folder: "${child.name}"`,
+					suggestion: 'Systems should be named "CODE Name" (e.g., "H01 Personal")',
+				});
+				continue;
+			}
+			if (!knownCodes.has(parsed.code)) {
+				acc.errors.push({
+					type: 'UNKNOWN_SYSTEM',
+					path: child.path,
+					message: `System "${parsed.code}" is not registered in settings`,
+					suggestion: 'Add it under Settings → Systems, or rename the folder',
+				});
+				continue;
+			}
+			if (systems.find(s => s.code === parsed.code)) {
+				acc.errors.push({
+					type: 'DUPLICATE_SYSTEM',
+					path: child.path,
+					message: `Duplicate system "${parsed.code}"`,
+				});
+				continue;
+			}
+
+			systems.push({code: parsed.code, name: parsed.name, path: child.path});
+			scanAreas(child, parsed.code, settings, acc);
+		}
+	} else {
+		scanAreas(root, null, settings, acc);
+	}
+
+	return {
+		valid: acc.errors.length === 0,
+		errors: acc.errors,
+		systems,
+		...rest(acc),
+	};
+}
+
+function rest(acc: Acc) {
+	return {areas: acc.areas, categories: acc.categories, ids: acc.ids};
+}
+
+/** Scan the area level inside a system folder (or the root for single-system). */
+function scanAreas(
+	parent: TFolder,
+	system: string | null,
+	settings: JDSettings,
+	acc: Acc
+): void {
+	for (const child of parent.children) {
 		if (!(child instanceof TFolder)) continue;
 		if (isExcluded(child.path, settings.exclusions)) continue;
 
 		const parsed = parseArea(child.name);
-
 		if (!parsed) {
-			errors.push({
+			acc.errors.push({
 				type: 'INVALID_AREA_NAME',
 				path: child.path,
 				message: `Invalid area name: "${child.name}"`,
@@ -54,168 +121,165 @@ export function validateVault(app: App, settings: JDSettings): ValidationResult 
 			});
 			continue;
 		}
-
 		if (!isValidAreaRange(parsed.rangeStart, parsed.rangeEnd)) {
-			errors.push({
+			acc.errors.push({
 				type: 'INVALID_AREA_RANGE',
 				path: child.path,
 				message: `Invalid area range: ${parsed.rangeStart}-${parsed.rangeEnd}`,
-				suggestion: 'Areas must span exactly 10 numbers starting at 0 (e.g., 10-19, 20-29)',
+				suggestion: 'Areas must span exactly 10 numbers starting at a multiple of 10',
 			});
 			continue;
 		}
-
-		// Check for duplicate areas
-		const duplicate = areas.find(
-			a => a.rangeStart === parsed.rangeStart && a.system === parsed.system
+		const duplicate = acc.areas.find(
+			a => a.rangeStart === parsed.rangeStart && a.system === system
 		);
 		if (duplicate) {
-			errors.push({
+			acc.errors.push({
 				type: 'DUPLICATE_AREA',
 				path: child.path,
-				message: `Duplicate area: ${parsed.rangeStart}-${parsed.rangeEnd} already exists at "${duplicate.path}"`,
+				message: `Duplicate area ${parsed.rangeStart}-${parsed.rangeEnd} (also at "${duplicate.path}")`,
 			});
 			continue;
 		}
 
 		const area: JDArea = {
-			system: parsed.system,
+			system,
 			rangeStart: parsed.rangeStart,
 			rangeEnd: parsed.rangeEnd,
 			name: parsed.name,
 			path: child.path,
 		};
-		areas.push(area);
-
-		// Scan second level: categories
-		for (const catChild of child.children) {
-			if (isExcluded(catChild.path, settings.exclusions)) continue;
-			if (!(catChild instanceof TFolder)) {
-				// Files at area level are orphans
-				if (catChild instanceof TFile && catChild.name.endsWith('.md')) {
-					errors.push({
-						type: 'ORPHAN_FILE',
-						path: catChild.path,
-						message: `File "${catChild.name}" is directly in area folder`,
-						suggestion: 'ID files should be inside category folders',
-					});
-				}
-				continue;
-			}
-
-			const catParsed = parseCategory(catChild.name);
-
-			if (!catParsed) {
-				errors.push({
-					type: 'INVALID_CATEGORY_NAME',
-					path: catChild.path,
-					message: `Invalid category name: "${catChild.name}"`,
-					suggestion: 'Categories should be named "XX Name" (e.g., "11 Travel")',
-				});
-				continue;
-			}
-
-			if (!isCategoryInArea(catParsed.number, parsed)) {
-				errors.push({
-					type: 'CATEGORY_OUTSIDE_AREA',
-					path: catChild.path,
-					message: `Category ${catParsed.number} is outside area range ${parsed.rangeStart}-${parsed.rangeEnd}`,
-				});
-				continue;
-			}
-
-			// Check for duplicate categories
-			const catDuplicate = categories.find(
-				c => c.number === catParsed.number && c.system === catParsed.system
-			);
-			if (catDuplicate) {
-				errors.push({
-					type: 'DUPLICATE_CATEGORY',
-					path: catChild.path,
-					message: `Duplicate category: ${catParsed.number} already exists at "${catDuplicate.path}"`,
-				});
-				continue;
-			}
-
-			const category: JDCategory = {
-				system: catParsed.system,
-				number: catParsed.number,
-				name: catParsed.name,
-				path: catChild.path,
-				parentArea: area,
-			};
-			categories.push(category);
-
-			// Scan third level: IDs
-			for (const idChild of catChild.children) {
-				if (isExcluded(idChild.path, settings.exclusions)) continue;
-				if (idChild instanceof TFolder) {
-					errors.push({
-						type: 'MISPLACED_FOLDER',
-						path: idChild.path,
-						message: `Unexpected folder "${idChild.name}" inside category`,
-						suggestion: 'Categories should only contain ID files, not subfolders',
-					});
-					continue;
-				}
-
-				if (!(idChild instanceof TFile) || !idChild.name.endsWith('.md')) continue;
-
-				const idParsed = parseId(idChild.name);
-
-				if (!idParsed) {
-					errors.push({
-						type: 'INVALID_ID_NAME',
-						path: idChild.path,
-						message: `Invalid ID name: "${idChild.name}"`,
-						suggestion: 'IDs should be named "XX.YY Name.md" (e.g., "11.01 NYC Trip.md")',
-					});
-					continue;
-				}
-
-				if (!isIdInCategory(idParsed.category, catParsed.number)) {
-					errors.push({
-						type: 'ID_OUTSIDE_CATEGORY',
-						path: idChild.path,
-						message: `ID ${idParsed.category}.${idParsed.id} is in wrong category (expected ${catParsed.number})`,
-					});
-					continue;
-				}
-
-				// Check for duplicate IDs
-				const idDuplicate = ids.find(
-					i =>
-						i.category === idParsed.category &&
-						i.id === idParsed.id &&
-						i.system === idParsed.system
-				);
-				if (idDuplicate) {
-					errors.push({
-						type: 'DUPLICATE_ID',
-						path: idChild.path,
-						message: `Duplicate ID: ${idParsed.category}.${idParsed.id} already exists at "${idDuplicate.path}"`,
-					});
-					continue;
-				}
-
-				const jdId: JDId = {
-					system: idParsed.system,
-					category: idParsed.category,
-					id: idParsed.id,
-					name: idParsed.name,
-					path: idChild.path,
-					parentCategory: category,
-				};
-				ids.push(jdId);
-			}
-		}
+		acc.areas.push(area);
+		scanCategories(child, area, system, settings, acc);
 	}
+}
 
-	return {
-		valid: errors.length === 0,
-		errors,
-		areas,
-		categories,
-		ids,
-	};
+function scanCategories(
+	areaFolder: TFolder,
+	area: JDArea,
+	system: string | null,
+	settings: JDSettings,
+	acc: Acc
+): void {
+	for (const catChild of areaFolder.children) {
+		if (isExcluded(catChild.path, settings.exclusions)) continue;
+		if (!(catChild instanceof TFolder)) {
+			if (catChild instanceof TFile && catChild.name.endsWith('.md')) {
+				acc.errors.push({
+					type: 'ORPHAN_FILE',
+					path: catChild.path,
+					message: `File "${catChild.name}" is directly in an area folder`,
+					suggestion: 'ID files should be inside category folders',
+				});
+			}
+			continue;
+		}
+
+		const catParsed = parseCategory(catChild.name);
+		if (!catParsed) {
+			acc.errors.push({
+				type: 'INVALID_CATEGORY_NAME',
+				path: catChild.path,
+				message: `Invalid category name: "${catChild.name}"`,
+				suggestion: 'Categories should be named "XX Name" (e.g., "11 Travel")',
+			});
+			continue;
+		}
+		if (!isCategoryInArea(catParsed.number, {
+			system,
+			rangeStart: area.rangeStart,
+			rangeEnd: area.rangeEnd,
+			name: area.name,
+		})) {
+			acc.errors.push({
+				type: 'CATEGORY_OUTSIDE_AREA',
+				path: catChild.path,
+				message: `Category ${catParsed.number} is outside area range ${area.rangeStart}-${area.rangeEnd}`,
+			});
+			continue;
+		}
+		const catDuplicate = acc.categories.find(
+			c => c.number === catParsed.number && c.system === system
+		);
+		if (catDuplicate) {
+			acc.errors.push({
+				type: 'DUPLICATE_CATEGORY',
+				path: catChild.path,
+				message: `Duplicate category ${catParsed.number} (also at "${catDuplicate.path}")`,
+			});
+			continue;
+		}
+
+		const category: JDCategory = {
+			system,
+			number: catParsed.number,
+			name: catParsed.name,
+			path: catChild.path,
+			parentArea: area,
+		};
+		acc.categories.push(category);
+		scanIds(catChild, category, catParsed.number, system, settings, acc);
+	}
+}
+
+function scanIds(
+	catFolder: TFolder,
+	category: JDCategory,
+	catNumber: number,
+	system: string | null,
+	settings: JDSettings,
+	acc: Acc
+): void {
+	for (const idChild of catFolder.children) {
+		if (isExcluded(idChild.path, settings.exclusions)) continue;
+		if (idChild instanceof TFolder) {
+			acc.errors.push({
+				type: 'MISPLACED_FOLDER',
+				path: idChild.path,
+				message: `Unexpected folder "${idChild.name}" inside category`,
+				suggestion: 'Categories should only contain ID files',
+			});
+			continue;
+		}
+		if (!(idChild instanceof TFile) || !idChild.name.endsWith('.md')) continue;
+
+		const idParsed = parseId(idChild.name);
+		if (!idParsed) {
+			acc.errors.push({
+				type: 'INVALID_ID_NAME',
+				path: idChild.path,
+				message: `Invalid ID name: "${idChild.name}"`,
+				suggestion: 'IDs should be named "XX.YY Name.md" (e.g., "11.01 NYC Trip.md")',
+			});
+			continue;
+		}
+		if (!isIdInCategory(idParsed.category, catNumber)) {
+			acc.errors.push({
+				type: 'ID_OUTSIDE_CATEGORY',
+				path: idChild.path,
+				message: `ID ${idParsed.category}.${idParsed.id} is in wrong category (expected ${catNumber})`,
+			});
+			continue;
+		}
+		const idDuplicate = acc.ids.find(
+			i => i.category === idParsed.category && i.id === idParsed.id && i.system === system
+		);
+		if (idDuplicate) {
+			acc.errors.push({
+				type: 'DUPLICATE_ID',
+				path: idChild.path,
+				message: `Duplicate ID ${idParsed.category}.${idParsed.id} (also at "${idDuplicate.path}")`,
+			});
+			continue;
+		}
+
+		acc.ids.push({
+			system,
+			category: idParsed.category,
+			id: idParsed.id,
+			name: idParsed.name,
+			path: idChild.path,
+			parentCategory: category,
+		});
+	}
 }

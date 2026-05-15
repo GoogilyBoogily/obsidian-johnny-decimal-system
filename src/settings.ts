@@ -1,9 +1,21 @@
 import {App, Notice, PluginSettingTab, Setting} from "obsidian";
 import type JohnnyDecimalPlugin from "./main";
+import {isValidSystemCode} from "./core/parser";
+
+/** A registered system: code + display name. Folder path is derived. */
+export interface SettingsSystem {
+	code: string;
+	name: string;
+}
 
 export interface JDSettings {
 	rootFolder: string;
-	defaultSystemPrefix: string;
+	/**
+	 * Registered systems (managed list). Empty = single-system vault: areas
+	 * live at the root with no system folder layer. Non-empty = multi-system:
+	 * each system is a "<CODE> <Name>" folder under the root.
+	 */
+	systems: SettingsSystem[];
 	/**
 	 * Excluded vault paths (and/or globs). Subtree-inclusive: excluding a
 	 * folder excludes that folder and every descendant. An excluded path is
@@ -21,7 +33,7 @@ export interface JDSettings {
 
 export const DEFAULT_SETTINGS: JDSettings = {
 	rootFolder: '',
-	defaultSystemPrefix: '',
+	systems: [],
 	exclusions: [],
 	idNoteTemplate: '# {{name}}\n\nCreated: {{date}}\n',
 	jdexPath: 'JDex.md',
@@ -60,19 +72,62 @@ export class JDSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			.setName('Default system prefix')
-			.setDesc('System prefix for multi-system vaults. Format: letter + 2 digits (e.g. H01). Leave empty for single-system.')
+			.setName('Systems')
+			.setHeading();
+
+		new Setting(containerEl)
+			.setName('Multiple systems')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "CODE Name" is a literal format example
+			.setDesc('Each registered system is a top-level "CODE Name" folder containing its own areas. Leave empty for a single-system vault (areas at the root, no system folder).');
+
+		for (const sys of this.plugin.settings.systems) {
+			new Setting(containerEl)
+				.setName(`${sys.code} ${sys.name}`)
+				.addButton(btn => btn
+					.setButtonText('Remove')
+					.setWarning()
+					.onClick(async () => {
+						this.plugin.settings.systems =
+							this.plugin.settings.systems.filter(s => s.code !== sys.code);
+						await this.plugin.saveSettings();
+						this.display();
+					}));
+		}
+
+		let newCode = '';
+		let newName = '';
+		new Setting(containerEl)
+			.setName('Add system')
+			.setDesc('Code (letter + 2 digits, e.g. H01) and a display name.')
 			.addText(text => text
 				.setPlaceholder('H01')
-				.setValue(this.plugin.settings.defaultSystemPrefix)
-				.onChange(async (value) => {
-					const upper = value.toUpperCase();
-					if (upper && !/^[A-Z]\d{2}$/.test(upper)) {
-						new Notice('System prefix must be a letter followed by 2 digits (e.g. H01)');
+				.onChange(value => {
+					newCode = value.toUpperCase().trim();
+				}))
+			.addText(text => text
+				.setPlaceholder('Personal')
+				.onChange(value => {
+					newName = value.trim();
+				}))
+			.addButton(btn => btn
+				.setButtonText('Add')
+				.setCta()
+				.onClick(async () => {
+					if (!isValidSystemCode(newCode)) {
+						new Notice('System code must be a letter followed by 2 digits (e.g. H01)');
 						return;
 					}
-					this.plugin.settings.defaultSystemPrefix = upper;
+					if (!newName) {
+						new Notice('Enter a system name');
+						return;
+					}
+					if (this.plugin.settings.systems.some(s => s.code === newCode)) {
+						new Notice(`System ${newCode} already exists`);
+						return;
+					}
+					this.plugin.settings.systems.push({code: newCode, name: newName});
 					await this.plugin.saveSettings();
+					this.display();
 				}));
 
 		new Setting(containerEl)

@@ -23,7 +23,7 @@ export function registerCreateCategoryCommand(plugin: JohnnyDecimalPlugin) {
 						return;
 					}
 
-					const folderName = formatCategoryName(number, safeName, area.system);
+					const folderName = formatCategoryName(number, safeName);
 					const fullPath = `${area.path}/${folderName}`;
 
 					try {

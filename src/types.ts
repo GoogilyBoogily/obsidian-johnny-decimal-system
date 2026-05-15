@@ -1,7 +1,17 @@
 // Johnny Decimal System Types
 
+// A "system" is a top-level folder named "<CODE> <Name>" (CODE = [A-Z]\d{2},
+// e.g. "H01 Personal"). Areas/categories/IDs inside it carry NO prefix in
+// their names — the system is derived from the folder path. Single-system
+// vaults define no systems and place areas at the root directly.
+export interface JDSystem {
+	code: string;           // e.g., "H01"
+	name: string;           // e.g., "Personal"
+	path: string;           // Vault-relative folder path
+}
+
 export interface JDArea {
-	system: string | null;  // System prefix or null for single-system vaults
+	system: string | null;  // System CODE derived from path, null if none
 	rangeStart: number;     // e.g., 10 for "10-19"
 	rangeEnd: number;       // e.g., 19 for "10-19"
 	name: string;           // e.g., "Life admin"
@@ -26,6 +36,9 @@ export interface JDId {
 }
 
 export type ValidationErrorType =
+	| 'INVALID_SYSTEM_NAME'
+	| 'UNKNOWN_SYSTEM'
+	| 'DUPLICATE_SYSTEM'
 	| 'INVALID_AREA_NAME'
 	| 'INVALID_AREA_RANGE'
 	| 'INVALID_CATEGORY_NAME'
@@ -48,12 +61,18 @@ export interface ValidationError {
 export interface ValidationResult {
 	valid: boolean;
 	errors: ValidationError[];
+	systems: JDSystem[];
 	areas: JDArea[];
 	categories: JDCategory[];
 	ids: JDId[];
 }
 
 // Parsed result types (nullable for invalid names)
+export interface ParsedSystem {
+	code: string;
+	name: string;
+}
+
 export interface ParsedArea {
 	system: string | null;
 	rangeStart: number;

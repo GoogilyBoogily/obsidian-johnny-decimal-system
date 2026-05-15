@@ -39,12 +39,7 @@ export function registerCreateIdCommand(plugin: JohnnyDecimalPlugin) {
 						return;
 					}
 
-					const fileName = formatIdName(
-						category.number,
-						nextId,
-						safeName,
-						category.system
-					);
+					const fileName = formatIdName(category.number, nextId, safeName);
 					const fullPath = `${category.path}/${fileName}.md`;
 
 					const fullId = formatFullId(category.number, nextId, category.system);

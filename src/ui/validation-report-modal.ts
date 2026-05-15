@@ -2,6 +2,9 @@ import {App, Modal} from 'obsidian';
 import type {ValidationErrorType, ValidationResult} from '../types';
 
 const ERROR_LABELS: Record<ValidationErrorType, string> = {
+	'INVALID_SYSTEM_NAME': 'Invalid system name',
+	'UNKNOWN_SYSTEM': 'Unregistered system',
+	'DUPLICATE_SYSTEM': 'Duplicate system',
 	'INVALID_AREA_NAME': 'Invalid area name',
 	'INVALID_AREA_RANGE': 'Invalid area range',
 	'INVALID_CATEGORY_NAME': 'Invalid category name',

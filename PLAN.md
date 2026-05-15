@@ -32,7 +32,9 @@
 
 - [x] **Phase 0** — jj colocated, README rewritten, build green (commit `9d350d86`)
 - [x] **Phase 0.5** — exclusion system: `core/exclusions.ts`, settings migration, validator rewire (commit `09b55068`)
-- [x] **Phase 1** — auto-prefix engine: `core/rename-engine.ts`, `vault.on('rename')` via `registerEvent`, move→category/ID assignment, system+category propagation, strip-on-exit, exclusion-gated, `autoPrefixEnabled`/`stripPrefixOnExit` toggles. Lint+build green.
+- [x] **Phase 1** — auto-prefix engine: `core/rename-engine.ts`, `vault.on('rename')` via `registerEvent`, move→category/ID assignment, propagation, strip-on-exit, exclusion-gated, toggles. (`07a6e09a`)
+- [x] **Phase 1.1** — fix: Area (`XX-YY`) folders never demoted/stripped (`2ec97ec2`)
+- [x] **Phase 1.5** — MODEL PIVOT: system-prefix-on-every-name → **system = top folder** + managed systems list. Clean unprefixed area/cat/ID names; system derived from path. Rewrote parser/validator; system-aware create-system/area + modals; settings systems manager; `defaultSystemPrefix`→`systems[]` migration; engine simplified (no system cascade — cross-system move = pure path change). Lint+build green.
 - [ ] **Phase 2** — context-aware right-click menu
 - [ ] **Phase 3** — create-time prefixing
 - [ ] **Phase 4** — roadmap commands (incl. area-range renumber)
