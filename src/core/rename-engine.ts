@@ -88,6 +88,49 @@ export class RenameEngine {
 			});
 	};
 
+	/**
+	 * Registered via plugin.registerEvent(vault.on('create', ...)) INSIDE
+	 * workspace.onLayoutReady so the initial vault-load create storm is
+	 * skipped. Assigns a prefix to a newly-created item in a JD slot.
+	 */
+	handleCreate = (file: TAbstractFile): void => {
+		if (!this.plugin.settings.autoPrefixEnabled) return;
+		if (this.inFlight.has(file.path)) {
+			this.inFlight.delete(file.path);
+			return;
+		}
+		if (isExcluded(file.path, this.exclusions)) return;
+
+		this.chain = this.chain
+			.then(() => this.processCreate(file))
+			.catch((err) => {
+				console.error('[Johnny Decimal] create engine error:', err);
+			});
+	};
+
+	private async processCreate(file: TAbstractFile): Promise<void> {
+		const parent = file.parent;
+		if (!parent) return;
+
+		if (file instanceof TFolder) {
+			// Already a System or Area folder → structural, leave it.
+			if (parseSystem(file.name) || parseArea(file.name)) return;
+
+			if (this.isAreaContainer(parent)) {
+				await this.assignArea(file, parent);
+				return;
+			}
+			const area = parseArea(parent.name);
+			if (area) await this.assignCategory(file, area);
+			return;
+		}
+
+		if (file instanceof TFile && file.name.endsWith('.md')) {
+			const category = parseCategory(parent.name);
+			if (category) await this.assignId(file, category);
+		}
+	}
+
 	private async process(file: TAbstractFile, oldPath: string): Promise<void> {
 		const parent = file.parent;
 		if (!parent) return;

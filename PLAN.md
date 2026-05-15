@@ -38,7 +38,7 @@
 - [ ] **Phase 6** — JDex auto-sync (design locked, see below)
 - [ ] **Phase 7** — vault numbering audit (design locked, see below)
 - [x] **Phase 2** — context-aware right-click menu: `file-menu` event, level-aware items (system→area→category→ID) opening preselected create modals; exclude/include toggle; shared `core/creators.ts` (commands + menu reuse, no duplication). Lint+build green.
-- [ ] **Phase 3** — create-time prefixing
+- [x] **Phase 3** — create-time prefixing: `RenameEngine.handleCreate` + `vault.on('create')` registered inside `workspace.onLayoutReady` (skips load storm); new folder/file in a JD slot auto-numbered via shared assign logic; structural/excluded items skipped. Lint+build green.
 - [ ] **Phase 4** — roadmap commands (renumber/range-remap items absorbed into Phase 7 audit fix engine)
 - [ ] **Phase 5** — polish + test harness
 

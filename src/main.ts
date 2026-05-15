@@ -21,6 +21,13 @@ export default class JohnnyDecimalPlugin extends Plugin {
 		this.registerEvent(
 			this.app.vault.on('rename', this.engine.handleRename)
 		);
+		// Register 'create' after layout-ready so the initial vault-load
+		// create storm (one event per existing file) is not processed.
+		this.app.workspace.onLayoutReady(() => {
+			this.registerEvent(
+				this.app.vault.on('create', this.engine.handleCreate)
+			);
+		});
 
 		registerFileMenu(this);
 
