@@ -19,15 +19,14 @@
  *
  * Out of scope (Phase 4): area-range remap forcing category renumber.
  *
- * Safety: plugin-issued renames echo back as rename events; each programmatic
- * write registers its destination in `inFlight` and the handler self-cancels
- * on its own write. All work serialized through one promise chain.
+ * Safety: recursion guarding + serialization are delegated to RenameQueue
+ * (shared with the JDex/strip flows and the Phase 7 audit fix engine).
  */
 
 import {App, TAbstractFile, TFile, TFolder, Notice} from 'obsidian';
 import type JohnnyDecimalPlugin from '../main';
 import {isExcluded} from './exclusions';
-import {flashPath} from '../ui/highlight';
+import {RenameQueue} from './rename-queue';
 import {
 	parseSystem,
 	parseArea,
@@ -53,8 +52,7 @@ function plainName(rawBasename: string): string {
 }
 
 export class RenameEngine {
-	private inFlight = new Set<string>();
-	private chain: Promise<void> = Promise.resolve();
+	private queue = new RenameQueue();
 
 	constructor(private plugin: JohnnyDecimalPlugin) {}
 
@@ -70,10 +68,7 @@ export class RenameEngine {
 	handleRename = (file: TAbstractFile, oldPath: string): void => {
 		if (!this.plugin.settings.autoPrefixEnabled) return;
 
-		if (this.inFlight.has(file.path)) {
-			this.inFlight.delete(file.path);
-			return;
-		}
+		if (this.queue.consumeEcho(file.path)) return;
 
 		if (
 			isExcluded(file.path, this.exclusions) ||
@@ -82,11 +77,7 @@ export class RenameEngine {
 			return;
 		}
 
-		this.chain = this.chain
-			.then(() => this.process(file, oldPath))
-			.catch((err) => {
-				console.error('[Johnny Decimal] rename engine error:', err);
-			});
+		this.queue.enqueue(() => this.process(file, oldPath), 'rename engine');
 	};
 
 	/**
@@ -96,17 +87,10 @@ export class RenameEngine {
 	 */
 	handleCreate = (file: TAbstractFile): void => {
 		if (!this.plugin.settings.autoPrefixEnabled) return;
-		if (this.inFlight.has(file.path)) {
-			this.inFlight.delete(file.path);
-			return;
-		}
+		if (this.queue.consumeEcho(file.path)) return;
 		if (isExcluded(file.path, this.exclusions)) return;
 
-		this.chain = this.chain
-			.then(() => this.processCreate(file))
-			.catch((err) => {
-				console.error('[Johnny Decimal] create engine error:', err);
-			});
+		this.queue.enqueue(() => this.processCreate(file), 'create engine');
 	};
 
 	private async processCreate(file: TAbstractFile): Promise<void> {
@@ -219,7 +203,7 @@ export class RenameEngine {
 		const newName = formatAreaName(start, plainName(folder.name));
 		const base = parent.isRoot() ? '' : parent.path;
 		const newPath = base ? `${base}/${newName}` : newName;
-		await this.safeRename(folder, newPath);
+		await this.queue.safeRename(this.app,folder, newPath);
 	}
 
 	/** Assign the next free category number within `area` to `folder`. */
@@ -257,7 +241,7 @@ export class RenameEngine {
 
 		const newName = formatCategoryName(next, plainName(folder.name));
 		const newPath = `${parent.path}/${newName}`;
-		await this.safeRename(folder, newPath);
+		await this.queue.safeRename(this.app,folder, newPath);
 
 		const moved = this.app.vault.getAbstractFileByPath(newPath);
 		if (moved instanceof TFolder) await this.propagateCategory(moved);
@@ -296,7 +280,7 @@ export class RenameEngine {
 
 		const newName = formatIdName(category.number, next, plainName(file.name));
 		const newPath = `${parent.path}/${newName}.md`;
-		await this.safeRename(file, newPath);
+		await this.queue.safeRename(this.app,file, newPath);
 	}
 
 	/**
@@ -315,7 +299,7 @@ export class RenameEngine {
 
 			const newName = `${formatIdName(cat.number, id.id, id.name)}.md`;
 			if (newName !== child.name) {
-				await this.safeRename(child, `${catFolder.path}/${newName}`);
+				await this.queue.safeRename(this.app,child, `${catFolder.path}/${newName}`);
 			}
 		}
 	}
@@ -334,34 +318,6 @@ export class RenameEngine {
 		const newName = isMd ? `${plain}.md` : plain;
 		const newPath = parentPath ? `${parentPath}/${newName}` : newName;
 		if (newPath === file.path) return;
-		await this.safeRename(file, newPath);
-	}
-
-	/**
-	 * Rename guarded against recursion. fileManager.renameFile for .md
-	 * (preserves wikilinks/backlinks), vault.rename for folders.
-	 */
-	private async safeRename(
-		file: TAbstractFile,
-		newPath: string
-	): Promise<void> {
-		if (file.path === newPath) return;
-		if (this.app.vault.getAbstractFileByPath(newPath)) {
-			new Notice(`Cannot rename: "${newPath}" already exists.`);
-			return;
-		}
-
-		this.inFlight.add(newPath);
-		try {
-			if (file instanceof TFolder) {
-				await this.app.vault.rename(file, newPath);
-			} else {
-				await this.app.fileManager.renameFile(file, newPath);
-			}
-		} catch (err) {
-			this.inFlight.delete(newPath);
-			throw err;
-		}
-		flashPath(newPath);
+		await this.queue.safeRename(this.app,file, newPath);
 	}
 }
