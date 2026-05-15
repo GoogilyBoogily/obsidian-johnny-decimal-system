@@ -12,7 +12,6 @@ import {
 	formatAreaName,
 	formatCategoryName,
 	formatIdName,
-	formatFullId,
 	sanitizeName,
 } from './parser';
 
@@ -119,15 +118,8 @@ export async function createId(
 	const fileName = formatIdName(category.number, nextId, safeName);
 	const fullPath = `${category.path}/${fileName}.md`;
 
-	const fullId = formatFullId(category.number, nextId, category.system);
-	const today = new Date().toISOString().split('T')[0] ?? '';
-	const content = plugin.settings.idNoteTemplate
-		.replace(/\{\{name\}\}/g, safeName)
-		.replace(/\{\{date\}\}/g, today)
-		.replace(/\{\{id\}\}/g, fullId);
-
 	try {
-		await plugin.app.vault.create(fullPath, content);
+		await plugin.app.vault.create(fullPath, '');
 		new Notice(`Created: ${fileName}`);
 		await plugin.app.workspace.openLinkText(fullPath, '', false);
 	} catch (err) {

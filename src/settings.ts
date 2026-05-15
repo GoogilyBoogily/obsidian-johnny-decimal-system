@@ -24,7 +24,6 @@ export interface JDSettings {
 	 * Replaces the old exact-name `ignorePatterns` (migrated on load).
 	 */
 	exclusions: string[];
-	idNoteTemplate: string;
 	jdexPath: string;
 	/** Master switch for the rename/move auto-prefix engine. */
 	autoPrefixEnabled: boolean;
@@ -38,7 +37,6 @@ export const DEFAULT_SETTINGS: JDSettings = {
 	rootFolder: '',
 	systems: [],
 	exclusions: [],
-	idNoteTemplate: '# {{name}}\n\nCreated: {{date}}\n',
 	jdexPath: 'JDex.md',
 	autoPrefixEnabled: true,
 	stripPrefixOnExit: true,
@@ -171,18 +169,6 @@ export class JDSettingTab extends PluginSettingTab {
 						.split('\n')
 						.map(p => p.trim())
 						.filter(p => p.length > 0);
-					await this.plugin.saveSettings();
-				}));
-
-		new Setting(containerEl)
-			 
-			.setName('ID note template')
-			.setDesc('Template for new ID notes. {{name}} = note name, {{date}} = YYYY-MM-DD, {{id}} = full ID (e.g. 11.01)')
-			.addTextArea(text => text
-				.setPlaceholder('# {{name}}\n\nCreated: {{date}}')
-				.setValue(this.plugin.settings.idNoteTemplate)
-				.onChange(async (value) => {
-					this.plugin.settings.idNoteTemplate = value;
 					await this.plugin.saveSettings();
 				}));
 
