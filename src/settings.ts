@@ -13,6 +13,10 @@ export interface JDSettings {
 	exclusions: string[];
 	idNoteTemplate: string;
 	jdexPath: string;
+	/** Master switch for the rename/move auto-prefix engine. */
+	autoPrefixEnabled: boolean;
+	/** Strip the JD prefix when an item is moved out of the JD structure. */
+	stripPrefixOnExit: boolean;
 }
 
 export const DEFAULT_SETTINGS: JDSettings = {
@@ -21,6 +25,8 @@ export const DEFAULT_SETTINGS: JDSettings = {
 	exclusions: [],
 	idNoteTemplate: '# {{name}}\n\nCreated: {{date}}\n',
 	jdexPath: 'JDex.md',
+	autoPrefixEnabled: true,
+	stripPrefixOnExit: true,
 };
 
 export class JDSettingTab extends PluginSettingTab {
@@ -70,7 +76,33 @@ export class JDSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
+			.setName('Auto-prefix on move and rename')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Johnny Decimal" is a proper noun/brand name
+			.setDesc('Automatically assign and propagate Johnny Decimal prefixes when folders/files are moved or renamed. Disable to make all prefixing manual.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoPrefixEnabled)
+				.onChange(async (value) => {
+					this.plugin.settings.autoPrefixEnabled = value;
+					await this.plugin.saveSettings();
+					this.display();
+				}));
+
+		if (this.plugin.settings.autoPrefixEnabled) {
+			new Setting(containerEl)
+				.setName('Strip prefix when moved out')
+				// eslint-disable-next-line obsidianmd/ui/sentence-case -- "JD"/"Johnny Decimal" are proper nouns
+				.setDesc('Remove the JD prefix from an item moved out of the Johnny Decimal structure.')
+				.addToggle(toggle => toggle
+					.setValue(this.plugin.settings.stripPrefixOnExit)
+					.onChange(async (value) => {
+						this.plugin.settings.stripPrefixOnExit = value;
+						await this.plugin.saveSettings();
+					}));
+		}
+
+		new Setting(containerEl)
 			.setName('Exclusions')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Johnny Decimal" is a proper noun/brand name
 			.setDesc('Vault paths excluded from Johnny Decimal — one per line. Subtree-inclusive: excluding a folder excludes everything under it. Excluded paths get no auto-prefix and no validation errors.')
 			.addTextArea(text => text
 				.setPlaceholder('70-79 Journals & Self-Tracking/72 Daily Tracking\n30-39 Knowledge & Inspiration/35 Web Resources & Sites/35.00 Karakeep')

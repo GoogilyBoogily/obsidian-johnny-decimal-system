@@ -2,10 +2,12 @@ import {Notice, Plugin} from 'obsidian';
 import {DEFAULT_SETTINGS, JDSettings, JDSettingTab} from "./settings";
 import {registerCommands} from "./commands";
 import {validateVault} from "./core/validator";
+import {RenameEngine} from "./core/rename-engine";
 import {NavigateModal} from "./ui/navigate-modal";
 
 export default class JohnnyDecimalPlugin extends Plugin {
 	settings: JDSettings;
+	engine: RenameEngine;
 
 	async onload() {
 		await this.loadSettings();
@@ -13,6 +15,11 @@ export default class JohnnyDecimalPlugin extends Plugin {
 		registerCommands(this);
 
 		this.addSettingTab(new JDSettingTab(this.app, this));
+
+		this.engine = new RenameEngine(this);
+		this.registerEvent(
+			this.app.vault.on('rename', this.engine.handleRename)
+		);
 
 		// eslint-disable-next-line obsidianmd/ui/sentence-case
 		this.addRibbonIcon('folder-tree', 'Johnny Decimal navigation', () => {

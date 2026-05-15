@@ -28,6 +28,16 @@
 - No tests despite `parser.ts` being pure and trivially testable.
 - `manifest.json` `authorUrl` empty.
 
+## Progress
+
+- [x] **Phase 0** — jj colocated, README rewritten, build green (commit `9d350d86`)
+- [x] **Phase 0.5** — exclusion system: `core/exclusions.ts`, settings migration, validator rewire (commit `09b55068`)
+- [x] **Phase 1** — auto-prefix engine: `core/rename-engine.ts`, `vault.on('rename')` via `registerEvent`, move→category/ID assignment, system+category propagation, strip-on-exit, exclusion-gated, `autoPrefixEnabled`/`stripPrefixOnExit` toggles. Lint+build green.
+- [ ] **Phase 2** — context-aware right-click menu
+- [ ] **Phase 3** — create-time prefixing
+- [ ] **Phase 4** — roadmap commands (incl. area-range renumber)
+- [ ] **Phase 5** — polish + test harness
+
 ## Reference Plugin — What We Can Port
 
 **pwaclawiak implemented:**
