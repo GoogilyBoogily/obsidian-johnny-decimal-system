@@ -1,8 +1,56 @@
-/*
+/* Validation report */
+.jd-validation-summary {
+	margin-bottom: 1em;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.jd-valid {
+	color: var(--text-success);
+	font-weight: var(--font-semibold);
+}
 
-If your plugin does not need CSS, delete this file.
+.jd-invalid {
+	color: var(--text-error);
+	font-weight: var(--font-semibold);
+}
 
-*/
+.jd-validation-stats {
+	padding: 0.5em 0.75em;
+	background: var(--background-secondary);
+	border-radius: var(--radius-s);
+	margin-bottom: 1em;
+	font-size: var(--font-smaller);
+	color: var(--text-muted);
+}
+
+.jd-error-list {
+	list-style: none;
+	padding: 0;
+}
+
+.jd-error-item {
+	padding: 0.75em;
+	margin-bottom: 0.5em;
+	background: var(--background-secondary);
+	border-left: 3px solid var(--text-error);
+	border-radius: var(--radius-s);
+}
+
+.jd-error-path {
+	font-family: var(--font-monospace);
+	color: var(--text-muted);
+	font-size: var(--font-smaller);
+}
+
+.jd-error-suggestion {
+	color: var(--text-accent);
+}
+
+/* Navigate modal */
+.jd-suggest-title {
+	font-weight: var(--font-medium);
+}
+
+.jd-suggest-path {
+	color: var(--text-muted);
+	font-size: var(--font-smaller);
+}

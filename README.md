@@ -1,90 +1,59 @@
-# Obsidian Sample Plugin
+# Johnny Decimal System
 
-This is a sample plugin for Obsidian (https://obsidian.md).
+An Obsidian plugin for building, validating, and navigating a [Johnny Decimal](https://johnnydecimal.com) organizational structure in your vault.
 
-This project uses TypeScript to provide type checking and documentation.
-The repo depends on the latest plugin API (obsidian.d.ts) in TypeScript Definition format, which contains TSDoc comments describing what it does.
+## What it does
 
-This sample plugin demonstrates some of the basic functionality the plugin API can do.
-- Adds a ribbon icon, which shows a Notice when clicked.
-- Adds a command "Open modal (simple)" which opens a Modal.
-- Adds a plugin setting tab to the settings page.
-- Registers a global click event and output 'click' to the console.
-- Registers a global interval which logs 'setInterval' to the console.
+The plugin manages a four-level hierarchy that maps directly onto folders and notes:
 
-## First time developing plugins?
+| Level    | Format           | Example             | Vault representation     |
+|----------|------------------|---------------------|--------------------------|
+| System   | `SYS` (optional) | `H01`               | Prefix on all names      |
+| Area     | `XX-YY Name`     | `10-19 Life admin`  | Folder                   |
+| Category | `XX Name`        | `11 Travel`         | Folder inside an area    |
+| ID       | `XX.YY Name`     | `11.01 NYC Trip`    | `.md` file in a category |
 
-Quick starting guide for new plugin devs:
+Systems are optional. Single-system vaults omit the prefix; multi-system vaults prepend it (e.g. `H01.10-19 Life admin`).
 
-- Check if [someone already developed a plugin for what you want](https://obsidian.md/plugins)! There might be an existing plugin similar enough that you can partner up with.
-- Make a copy of this repo as a template with the "Use this template" button (login to GitHub if you don't see it).
-- Clone your repo to a local development folder. For convenience, you can place this folder in your `.obsidian/plugins/your-plugin-name` folder.
-- Install NodeJS, then run `npm i` in the command line under your repo folder.
-- Run `npm run dev` to compile your plugin from `main.ts` to `main.js`.
-- Make changes to `main.ts` (or create new `.ts` files). Those changes should be automatically compiled into `main.js`.
-- Reload Obsidian to load the new version of your plugin.
-- Enable plugin in settings window.
-- For updates to the Obsidian API run `npm update` in the command line under your repo folder.
+## Features
 
-## Releasing new releases
+- **Create system** — set an optional system prefix (`H01`) for multi-system vaults.
+- **Create area** — pick an unused `XX-YY` range; used ranges are skipped automatically.
+- **Create category** — pick an area, then an unused category number within its range.
+- **Create ID** — pick a category; the next ID number is auto-assigned and a note is created from your template.
+- **Quick navigate** — fuzzy-search every ID by number or name and jump straight to the note.
+- **Validate vault** — recursively scans the structure and reports 11 classes of error (invalid/duplicate/misplaced names, out-of-range categories and IDs, orphan files, and more) with suggested fixes.
+- **Generate JDex** — builds or updates a Markdown index of the whole system.
 
-- Update your `manifest.json` with your new version number, such as `1.0.1`, and the minimum Obsidian version required for your latest release.
-- Update your `versions.json` file with `"new-plugin-version": "minimum-obsidian-version"` so older versions of Obsidian can download an older version of your plugin that's compatible.
-- Create new GitHub release using your new version number as the "Tag version". Use the exact version number, don't include a prefix `v`. See here for an example: https://github.com/obsidianmd/obsidian-sample-plugin/releases
-- Upload the files `manifest.json`, `main.js`, `styles.css` as binary attachments. Note: The manifest.json file must be in two places, first the root path of your repository and also in the release.
-- Publish the release.
+All actions are available from the command palette, and a ribbon icon opens Quick navigate.
 
-> You can simplify the version bump process by running `npm version patch`, `npm version minor` or `npm version major` after updating `minAppVersion` manually in `manifest.json`.
-> The command will bump version in `manifest.json` and `package.json`, and add the entry for the new version to `versions.json`
+## Settings
 
-## Adding your plugin to the community plugin list
+| Setting | Purpose |
+|---------|---------|
+| Root folder | Where the JD system starts (empty = vault root). |
+| Default system prefix | System prefix for multi-system vaults (format: letter + 2 digits). |
+| Ignore patterns | Folder names skipped during validation (exact match, comma-separated). |
+| ID note template | Template for new ID notes. Supports `{{name}}`, `{{date}}`, `{{id}}`. |
+| JDex path | Path for the generated index file, relative to the root folder. |
 
-- Check the [plugin guidelines](https://docs.obsidian.md/Plugins/Releasing/Plugin+guidelines).
-- Publish an initial version.
-- Make sure you have a `README.md` file in the root of your repo.
-- Make a pull request at https://github.com/obsidianmd/obsidian-releases to add your plugin.
+## Installation (manual)
 
-## How to use
+1. Build the plugin: `npm install && npm run build`.
+2. Copy `main.js`, `manifest.json`, and `styles.css` into `<Vault>/.obsidian/plugins/johnny-decimal/`.
+3. Reload Obsidian and enable the plugin in Settings → Community plugins.
 
-- Clone this repo.
-- Make sure your NodeJS is at least v16 (`node --version`).
-- `npm i` or `yarn` to install dependencies.
-- `npm run dev` to start compilation in watch mode.
+## Development
 
-## Manually installing the plugin
-
-- Copy over `main.js`, `styles.css`, `manifest.json` to your vault `VaultFolder/.obsidian/plugins/your-plugin-id/`.
-
-## Improve code quality with eslint
-- [ESLint](https://eslint.org/) is a tool that analyzes your code to quickly find problems. You can run ESLint against your plugin to find common bugs and ways to improve your code. 
-- This project already has eslint preconfigured, you can invoke a check by running`npm run lint`
-- Together with a custom eslint [plugin](https://github.com/obsidianmd/eslint-plugin) for Obsidan specific code guidelines.
-- A GitHub action is preconfigured to automatically lint every commit on all branches.
-
-## Funding URL
-
-You can include funding URLs where people who use your plugin can financially support it.
-
-The simple way is to set the `fundingUrl` field to your link in your `manifest.json` file:
-
-```json
-{
-    "fundingUrl": "https://buymeacoffee.com"
-}
+```bash
+npm install     # install dependencies
+npm run dev     # build with watch mode
+npm run build   # production build (type-check + bundle)
+npm run lint    # ESLint (eslint-plugin-obsidianmd)
 ```
 
-If you have multiple URLs, you can also do:
+Source layout and architecture are documented in `CLAUDE.md`. The forward-looking implementation roadmap — auto-prefixing engine, context menu, path-based exclusion system, and more — lives in `PLAN.md`.
 
-```json
-{
-    "fundingUrl": {
-        "Buy Me a Coffee": "https://buymeacoffee.com",
-        "GitHub Sponsor": "https://github.com/sponsors",
-        "Patreon": "https://www.patreon.com/"
-    }
-}
-```
+## License
 
-## API Documentation
-
-See https://docs.obsidian.md
+0-BSD.
