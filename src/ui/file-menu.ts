@@ -39,7 +39,7 @@ function buildMenu(
 
 	menu.addItem(item =>
 		item
-			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Johnny Decimal" is a proper noun
+			 
 			.setTitle(
 				excluded
 					? 'Johnny Decimal: remove exclusion'

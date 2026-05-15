@@ -45,6 +45,22 @@
 	color: var(--text-accent);
 }
 
+/* Rename flash — fades out over ~1.2s after the engine renames an item */
+@keyframes jd-flash {
+	from {
+		background-color: var(--text-accent);
+		color: var(--text-on-accent);
+	}
+	to {
+		background-color: transparent;
+	}
+}
+
+.jd-flash {
+	animation: jd-flash 1.2s ease-out;
+	border-radius: var(--radius-s);
+}
+
 /* Navigate modal */
 .jd-suggest-title {
 	font-weight: var(--font-medium);

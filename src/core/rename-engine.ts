@@ -27,6 +27,7 @@
 import {App, TAbstractFile, TFile, TFolder, Notice} from 'obsidian';
 import type JohnnyDecimalPlugin from '../main';
 import {isExcluded} from './exclusions';
+import {flashPath} from '../ui/highlight';
 import {
 	parseSystem,
 	parseArea,
@@ -361,5 +362,6 @@ export class RenameEngine {
 			this.inFlight.delete(newPath);
 			throw err;
 		}
+		flashPath(newPath);
 	}
 }

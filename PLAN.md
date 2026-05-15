@@ -40,7 +40,7 @@
 - [x] **Phase 2** — context-aware right-click menu: `file-menu` event, level-aware items (system→area→category→ID) opening preselected create modals; exclude/include toggle; shared `core/creators.ts` (commands + menu reuse, no duplication). Lint+build green.
 - [x] **Phase 3** — create-time prefixing: `RenameEngine.handleCreate` + `vault.on('create')` registered inside `workspace.onLayoutReady` (skips load storm); new folder/file in a JD slot auto-numbered via shared assign logic; structural/excluded items skipped. Lint+build green.
 - [x] **Phase 4** — roadmap commands: "remove prefixes from children" (file-menu + command) → strips JD numbering recursively AND excludes the folder (coupled — engine is always-on, strip-alone would be re-prefixed); generic `ConfirmModal`. Multi-file move: already works (engine serializes every rename event on one chain — no global block like pwaclawiak). "Block prefixes >level 2" DROPPED — moot in the system-folder/clean-name model. Renumber/range-remap absorbed into Phase 7. Lint+build green.
-- [ ] **Phase 5** — polish + test harness
+- [x] **Phase 5** — polish + tests: rename-flash (CSS `jd-flash` fade + `ui/highlight.ts`, engine calls it post-rename); test harness (`node --test` + `tsx`, `npm test`) with `parser` (10) + `exclusions` (7) suites = 17 passing; `test/**` eslint-ignored (outside tsconfig project). Revert-guard for manual dup/mismatch DROPPED — engine auto-reassigns to next-free (cleaner than pwaclawiak's revert; consistent with no-backward-compat rule). Lint+build+tests green.
 
 ## Reference Plugin — What We Can Port
 
