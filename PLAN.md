@@ -35,6 +35,7 @@
 - [x] **Phase 1** — auto-prefix engine: `core/rename-engine.ts`, `vault.on('rename')` via `registerEvent`, move→category/ID assignment, propagation, strip-on-exit, exclusion-gated, toggles. (`07a6e09a`)
 - [x] **Phase 1.1** — fix: Area (`XX-YY`) folders never demoted/stripped (`2ec97ec2`)
 - [x] **Phase 1.5** — MODEL PIVOT: system-prefix-on-every-name → **system = top folder** + managed systems list. Clean unprefixed area/cat/ID names; system derived from path. Rewrote parser/validator; system-aware create-system/area + modals; settings systems manager; `defaultSystemPrefix`→`systems[]` migration; engine simplified (no system cascade — cross-system move = pure path change). Lint+build green.
+- [ ] **Phase 6** — JDex auto-sync (design locked, see below)
 - [ ] **Phase 2** — context-aware right-click menu
 - [ ] **Phase 3** — create-time prefixing
 - [ ] **Phase 4** — roadmap commands (incl. area-range renumber)
@@ -95,6 +96,105 @@ Logic: normalize path → exact match any exclusion → `path === ex || path.sta
 Migration: old `ignorePatterns` (exact names) auto-convert to `**/<name>/**` glob once on load. User keeps config (no backwards-compat constraint, but free).
 
 Every event handler early-returns on `isExcluded`. Context menu hides JD items on excluded folders. Validator's `shouldIgnore` rewired to call `isExcluded(path, ...)` with full path instead of bare name.
+
+## Phase 6 — JDex Auto-Sync (design)
+
+Goal: keep the JDex file current automatically on create / rename / move /
+delete, efficiently and without loops or fighting the rename engine.
+
+### Core decision: debounced idempotent regen, NOT an incremental delta-map
+
+Researched both. The JD tree is small (hundreds–low-thousands of nodes) and
+`validateVault` is a pure in-memory `TFolder.children` walk with zero disk
+I/O — the only expensive operation is the file write. A Dataview-style
+in-memory `Map<path,node>` with per-event deltas would add significant bug
+surface (folder-burst re-keying, ordering) for negligible gain. Chosen
+design: **re-run `validateVault` and regenerate, debounced, and skip the
+write when content is unchanged.**
+
+### Why a trailing debounce also solves the hard problems
+
+1. **Folder rename/move/delete fires a burst** (Obsidian emits one event for
+   the folder *plus one per descendant* — confirmed via Dataview source +
+   Obsidian forum). A `debounce(fn, ~500ms, resetTimer:true)` coalesces the
+   whole burst into one regen.
+2. **Engine-ordering hazard disappears.** `assignArea`/`assignCategory` →
+   folder rename → `propagateCategory` child renames each fire more rename
+   events that keep resetting the debounce timer. Regen only runs once the
+   vault goes quiet, so it always reads the engine's *final* names. → We do
+   NOT need to expose `RenameEngine.inFlight`/`chain` (they stay private).
+3. **`modify` is ignored entirely.** JDex indexes structure/paths, not note
+   contents, so a note edit is irrelevant. Not subscribing to `modify`
+   removes the largest self-write-loop vector outright.
+
+### Event wiring
+
+- Subscribe via `this.registerEvent(this.app.vault.on(...))` for
+  `create`, `delete`, `rename` only (no `modify`).
+- Register the `create` handler **inside `this.app.workspace.onLayoutReady(...)`**
+  so the initial vault-load `create` storm is skipped; do the first JDex
+  build in that same callback. `delete`/`rename` register in `onload()`.
+- Every handler, first lines: ignore if `!settings.autoSyncJdex`; ignore if
+  `file.path` is the resolved JDex path; ignore if
+  `isExcluded(file.path, settings.exclusions)` (same gate as the engine).
+  Then call the shared debounced `scheduleSync()`.
+
+### Self-write-loop defense (layered)
+
+1. Path-exclude the resolved JDex path (`rootFolder/jdexPath`) in every handler.
+2. Content-hash short-circuit: hash the generated body (excluding the
+   volatile `*Generated:* ` line); if equal to last write, skip the write —
+   no `create`/`rename` echo, no churn.
+3. Don't subscribe to `modify` at all.
+
+### Write path
+
+- Factor `generate-jdex.ts:12-94` into a shared
+  `buildJdexContent(plugin): string` + `writeJdex(plugin, content)`; the
+  command and the syncer both call it (no duplication).
+- Use `vault.process(file, fn)` (atomic read-modify-write) when the file
+  exists, `vault.create` when not.
+- **Idempotence fix:** drop the per-run date stamp from the hashed region
+  (or move it outside a managed block) so an unchanged structure produces
+  byte-identical managed content.
+- **Preserve user edits (optional, recommended):** wrap generated output in
+  `<!-- JD:START -->` / `<!-- JD:END -->` markers; `vault.process` replaces
+  only that region, leaving any user-authored text outside it intact. If
+  the file exists without markers and has non-trivial content, abort + Notice
+  rather than clobber.
+
+### Settings
+
+- New toggle `autoSyncJdex` (default true), mirrors `autoPrefixEnabled`.
+- A change to `jdexPath`, `rootFolder`, `systems`, or `exclusions` triggers a
+  resync. If `jdexPath`/`rootFolder` changed, the old JDex file is orphaned —
+  Notice the user (no auto-delete; respects the no-silent-data-loss rule).
+
+### Lifecycle / safety
+
+- Debouncer flushed on unload: `this.register(() => this.sync.run())` so a
+  pending write is not lost.
+- `debounce(..., 500, true)` — 500 ms field-tested to outlast large
+  folder-rename descendant trains.
+- External (outside-Obsidian) renames are not caught by `vault.on('rename')`
+  (they surface as delete+create) — acceptable; both are still handled.
+
+### Build order within the phase
+
+1. Extract `buildJdexContent` / `writeJdex` shared module; make content
+   idempotent (timestamp out of hashed region); content-hash guard.
+2. `autoSyncJdex` setting + toggle UI.
+3. `JdexSync` class: debounced `scheduleSync`, event handlers, gates,
+   `onLayoutReady` create registration, unload flush.
+4. Optional managed-region (`JD:START/END`) preservation.
+5. Settings-change resync + orphaned-file Notice.
+
+### Open
+
+- [ ] Managed-region markers in v1, or full-file ownership in v1 + markers later?
+      (Lean: markers in v1 — cheap, prevents clobbering user notes in JDex.)
+- [ ] Per-system JDex sectioning is currently absent (flat range-sorted);
+      out of scope for sync, tracked as a separate JDex-format improvement.
 
 ## Phased Roadmap
 
