@@ -67,6 +67,33 @@ export interface ValidationResult {
 	ids: JDId[];
 }
 
+// --- Audit ---
+export type AuditSeverity = 'error' | 'warn' | 'info';
+
+export type AuditKind =
+	| 'PADDING'
+	| 'MISFILED_ID'
+	| 'DUPLICATE'
+	| 'GAP'
+	| 'SYSTEM';
+
+export interface FixAction {
+	// Declarative, ordered list of renames (computed, not yet executed).
+	renames: {from: string; to: string}[];
+}
+
+export interface AuditFinding {
+	severity: AuditSeverity;
+	kind: AuditKind;
+	path: string;
+	message: string;
+	fix?: FixAction; // absent = informational / not auto-fixable
+}
+
+export interface AuditReport {
+	findings: AuditFinding[];
+}
+
 // Parsed result types (nullable for invalid names)
 export interface ParsedSystem {
 	code: string;

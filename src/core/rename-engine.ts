@@ -52,7 +52,9 @@ function plainName(rawBasename: string): string {
 }
 
 export class RenameEngine {
-	private queue = new RenameQueue();
+	// Public so the audit fix engine shares the same echo-guard + chain —
+	// otherwise engine would react to audit-issued renames and re-number them.
+	readonly queue = new RenameQueue();
 
 	constructor(private plugin: JohnnyDecimalPlugin) {}
 
