@@ -101,5 +101,7 @@ Every event handler early-returns on `isExcluded`. Context menu hides JD items o
 ## Open / Decided
 
 - [x] Exclusion default scope → **subtree-inclusive** (excluding a folder excludes all under it)
+- [x] Glob strategy → **minimal hand-rolled matcher** (`**` / `*` / `?`, zero deps); literal paths use exact+subtree rule
 - [x] Next-number policy → **highest + 1** (JD-idiomatic, matches pwaclawiak; deleted IDs never reused)
 - [x] VCS → **jj colocated** (`jj git init --colocate`), commits via jj
+- [ ] Test harness: repo has no test runner. `isExcluded`/`parser` unit tests deferred to Phase 5 (needs `node:test` or vitest scaffold). Tracked, not yet built.

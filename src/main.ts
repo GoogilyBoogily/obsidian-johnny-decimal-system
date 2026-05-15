@@ -35,7 +35,20 @@ export default class JohnnyDecimalPlugin extends Plugin {
 	}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<JDSettings>);
+		const raw = (await this.loadData() ?? {}) as Partial<JDSettings> & {ignorePatterns?: string[]};
+
+		// One-time migration: old `ignorePatterns` (exact folder names matched
+		// at any depth) → `exclusions` as `**/<name>/**` globs, the
+		// path-based equivalent of "this name anywhere". Only runs when the
+		// new field is absent so it never clobbers user-set exclusions.
+		if (raw.ignorePatterns && raw.exclusions === undefined) {
+			raw.exclusions = raw.ignorePatterns
+				.filter(n => n.length > 0)
+				.map(n => `**/${n}/**`);
+		}
+		delete raw.ignorePatterns;
+
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, raw);
 	}
 
 	async saveSettings() {

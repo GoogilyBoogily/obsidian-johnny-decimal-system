@@ -4,7 +4,13 @@ import type JohnnyDecimalPlugin from "./main";
 export interface JDSettings {
 	rootFolder: string;
 	defaultSystemPrefix: string;
-	ignorePatterns: string[];
+	/**
+	 * Excluded vault paths (and/or globs). Subtree-inclusive: excluding a
+	 * folder excludes that folder and every descendant. An excluded path is
+	 * frozen — no auto-prefix, no propagation, no validation errors.
+	 * Replaces the old exact-name `ignorePatterns` (migrated on load).
+	 */
+	exclusions: string[];
 	idNoteTemplate: string;
 	jdexPath: string;
 }
@@ -12,7 +18,7 @@ export interface JDSettings {
 export const DEFAULT_SETTINGS: JDSettings = {
 	rootFolder: '',
 	defaultSystemPrefix: '',
-	ignorePatterns: [],
+	exclusions: [],
 	idNoteTemplate: '# {{name}}\n\nCreated: {{date}}\n',
 	jdexPath: 'JDex.md',
 };
@@ -64,16 +70,14 @@ export class JDSettingTab extends PluginSettingTab {
 				}));
 
 		new Setting(containerEl)
-			 
-			.setName('Ignore patterns')
-			.setDesc('Folder names to ignore during validation (comma-separated, exact matching)')
-			.addText(text => text
-				// eslint-disable-next-line obsidianmd/ui/sentence-case
-				.setPlaceholder('templates, archive')
-				.setValue(this.plugin.settings.ignorePatterns.join(', '))
+			.setName('Exclusions')
+			.setDesc('Vault paths excluded from Johnny Decimal — one per line. Subtree-inclusive: excluding a folder excludes everything under it. Excluded paths get no auto-prefix and no validation errors.')
+			.addTextArea(text => text
+				.setPlaceholder('70-79 Journals & Self-Tracking/72 Daily Tracking\n30-39 Knowledge & Inspiration/35 Web Resources & Sites/35.00 Karakeep')
+				.setValue(this.plugin.settings.exclusions.join('\n'))
 				.onChange(async (value) => {
-					this.plugin.settings.ignorePatterns = value
-						.split(',')
+					this.plugin.settings.exclusions = value
+						.split('\n')
 						.map(p => p.trim())
 						.filter(p => p.length > 0);
 					await this.plugin.saveSettings();

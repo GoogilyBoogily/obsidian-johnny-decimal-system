@@ -16,6 +16,7 @@ import {
 	isCategoryInArea,
 	isIdInCategory,
 } from './parser';
+import {isExcluded} from './exclusions';
 
 export function validateVault(app: App, settings: JDSettings): ValidationResult {
 	const errors: ValidationError[] = [];
@@ -40,7 +41,7 @@ export function validateVault(app: App, settings: JDSettings): ValidationResult 
 	// Scan first level: areas
 	for (const child of root.children) {
 		if (!(child instanceof TFolder)) continue;
-		if (shouldIgnore(child.name, settings.ignorePatterns)) continue;
+		if (isExcluded(child.path, settings.exclusions)) continue;
 
 		const parsed = parseArea(child.name);
 
@@ -88,6 +89,7 @@ export function validateVault(app: App, settings: JDSettings): ValidationResult 
 
 		// Scan second level: categories
 		for (const catChild of child.children) {
+			if (isExcluded(catChild.path, settings.exclusions)) continue;
 			if (!(catChild instanceof TFolder)) {
 				// Files at area level are orphans
 				if (catChild instanceof TFile && catChild.name.endsWith('.md')) {
@@ -146,6 +148,7 @@ export function validateVault(app: App, settings: JDSettings): ValidationResult 
 
 			// Scan third level: IDs
 			for (const idChild of catChild.children) {
+				if (isExcluded(idChild.path, settings.exclusions)) continue;
 				if (idChild instanceof TFolder) {
 					errors.push({
 						type: 'MISPLACED_FOLDER',
@@ -215,8 +218,4 @@ export function validateVault(app: App, settings: JDSettings): ValidationResult 
 		categories,
 		ids,
 	};
-}
-
-function shouldIgnore(name: string, patterns: string[]): boolean {
-	return patterns.includes(name);
 }
