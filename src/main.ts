@@ -3,6 +3,7 @@ import {DEFAULT_SETTINGS, JDSettings, JDSettingTab} from "./settings";
 import {registerCommands} from "./commands";
 import {validateVault} from "./core/validator";
 import {RenameEngine} from "./core/rename-engine";
+import {registerFileMenu} from "./ui/file-menu";
 import {NavigateModal} from "./ui/navigate-modal";
 
 export default class JohnnyDecimalPlugin extends Plugin {
@@ -20,6 +21,8 @@ export default class JohnnyDecimalPlugin extends Plugin {
 		this.registerEvent(
 			this.app.vault.on('rename', this.engine.handleRename)
 		);
+
+		registerFileMenu(this);
 
 		// eslint-disable-next-line obsidianmd/ui/sentence-case
 		this.addRibbonIcon('folder-tree', 'Johnny Decimal navigation', () => {

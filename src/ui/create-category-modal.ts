@@ -7,16 +7,20 @@ export class CreateCategoryModal extends Modal {
 	private categories: JDCategory[];
 	private onSubmit: (area: JDArea, number: number, name: string) => Promise<void>;
 
+	private preselectAreaPath: string | null;
+
 	constructor(
 		app: App,
 		areas: JDArea[],
 		categories: JDCategory[],
-		onSubmit: (area: JDArea, number: number, name: string) => Promise<void>
+		onSubmit: (area: JDArea, number: number, name: string) => Promise<void>,
+		preselectAreaPath?: string
 	) {
 		super(app);
 		this.areas = areas;
 		this.categories = categories;
 		this.onSubmit = onSubmit;
+		this.preselectAreaPath = preselectAreaPath ?? null;
 	}
 
 	onOpen() {
@@ -29,7 +33,9 @@ export class CreateCategoryModal extends Modal {
 			return;
 		}
 
-		let selectedArea: JDArea = this.areas[0]!;
+		let selectedArea: JDArea =
+			this.areas.find(a => a.path === this.preselectAreaPath)
+			?? this.areas[0]!;
 		let categoryNumber = selectedArea.rangeStart;
 		let name = '';
 

@@ -6,14 +6,18 @@ export class CreateIdModal extends Modal {
 	private categories: JDCategory[];
 	private onSubmit: (category: JDCategory, name: string) => Promise<void>;
 
+	private preselectCategoryPath: string | null;
+
 	constructor(
 		app: App,
 		categories: JDCategory[],
-		onSubmit: (category: JDCategory, name: string) => Promise<void>
+		onSubmit: (category: JDCategory, name: string) => Promise<void>,
+		preselectCategoryPath?: string
 	) {
 		super(app);
 		this.categories = categories;
 		this.onSubmit = onSubmit;
+		this.preselectCategoryPath = preselectCategoryPath ?? null;
 	}
 
 	onOpen() {
@@ -26,7 +30,9 @@ export class CreateIdModal extends Modal {
 			return;
 		}
 
-		let selectedCategory: JDCategory = this.categories[0]!;
+		let selectedCategory: JDCategory =
+			this.categories.find(c => c.path === this.preselectCategoryPath)
+			?? this.categories[0]!;
 		let name = '';
 
 		new Setting(contentEl)

@@ -11,6 +11,8 @@ export class CreateAreaModal extends Modal {
 		name: string
 	) => Promise<void>;
 
+	private preselectSystemCode: string | null;
+
 	constructor(
 		app: App,
 		systems: JDSystem[],
@@ -19,12 +21,14 @@ export class CreateAreaModal extends Modal {
 			system: JDSystem | null,
 			rangeStart: number,
 			name: string
-		) => Promise<void>
+		) => Promise<void>,
+		preselectSystemCode?: string
 	) {
 		super(app);
 		this.systems = systems;
 		this.areas = areas;
 		this.onSubmit = onSubmit;
+		this.preselectSystemCode = preselectSystemCode ?? null;
 	}
 
 	onOpen() {
@@ -33,7 +37,10 @@ export class CreateAreaModal extends Modal {
 		contentEl.createEl('h2', {text: 'Create area'});
 
 		const multi = this.systems.length > 0;
-		let selectedSystem: JDSystem | null = multi ? this.systems[0]! : null;
+		let selectedSystem: JDSystem | null = multi
+			? (this.systems.find(s => s.code === this.preselectSystemCode)
+				?? this.systems[0]!)
+			: null;
 		let name = '';
 
 		const rangeContainer = contentEl.createDiv();
