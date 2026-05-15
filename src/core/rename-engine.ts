@@ -32,6 +32,7 @@ import {
 	parseArea,
 	parseCategory,
 	parseId,
+	formatAreaName,
 	formatCategoryName,
 	formatIdName,
 	isCategoryInArea,
@@ -103,6 +104,13 @@ export class RenameEngine {
 		const area = parseArea(parent.name);
 		const category = parseCategory(parent.name);
 
+		// Area slot: a non-area folder directly inside a System folder
+		// (multi-system) or the JD root (single-system).
+		if (file instanceof TFolder && this.isAreaContainer(parent)) {
+			await this.assignArea(file, parent);
+			return;
+		}
+
 		// Category slot: a non-area folder directly inside an Area.
 		if (area && file instanceof TFolder) {
 			await this.assignCategory(file, area);
@@ -130,6 +138,44 @@ export class RenameEngine {
 		) {
 			await this.stripPrefix(file);
 		}
+	}
+
+	/**
+	 * True if `parent` is where Areas live: a System folder when multi-system,
+	 * or the configured JD root (or vault root) when single-system.
+	 */
+	private isAreaContainer(parent: TFolder): boolean {
+		if (this.plugin.settings.systems.length > 0) {
+			return parseSystem(parent.name) !== null;
+		}
+		const rootFolder = this.plugin.settings.rootFolder;
+		if (rootFolder) return parent.path === rootFolder;
+		return parent.isRoot();
+	}
+
+	/** Assign the next free area range (decade) to `folder`. */
+	private async assignArea(
+		folder: TFolder,
+		parent: TFolder
+	): Promise<void> {
+		const used = new Set<number>();
+		for (const sib of parent.children) {
+			if (sib === folder || !(sib instanceof TFolder)) continue;
+			const a = parseArea(sib.name);
+			if (a) used.add(a.rangeStart);
+		}
+
+		let start = 0;
+		while (start <= 90 && used.has(start)) start += 10;
+		if (start > 90) {
+			new Notice('No free area range (00-09 … 90-99 all used).');
+			return;
+		}
+
+		const newName = formatAreaName(start, plainName(folder.name));
+		const base = parent.isRoot() ? '' : parent.path;
+		const newPath = base ? `${base}/${newName}` : newName;
+		await this.safeRename(folder, newPath);
 	}
 
 	/** Assign the next free category number within `area` to `folder`. */
