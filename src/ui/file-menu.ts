@@ -15,8 +15,10 @@ import {
 	createNextCategory,
 	createId,
 } from '../core/creators';
+import {unJd} from '../core/strip';
 import {CreateSystemModal} from './create-system-modal';
 import {NamePromptModal} from './name-prompt-modal';
+import {ConfirmModal} from './confirm-modal';
 
 export function registerFileMenu(plugin: JohnnyDecimalPlugin): void {
 	plugin.registerEvent(
@@ -56,7 +58,26 @@ function buildMenu(
 			})
 	);
 
-	if (excluded || !(file instanceof TFolder)) return;
+	if (!(file instanceof TFolder)) return;
+
+	const folder = file;
+	menu.addItem(item =>
+		item
+			// eslint-disable-next-line obsidianmd/ui/sentence-case -- "Johnny Decimal" is a proper noun
+			.setTitle('Johnny Decimal: remove prefixes from children')
+			.setIcon('list-x')
+			.onClick(() => {
+				new ConfirmModal(
+					plugin.app,
+					'Remove JD prefixes?',
+					`Strip JD numbering from everything under "${folder.path}" and exclude this folder so it is no longer auto-numbered. This renames files/folders.`,
+					'Remove',
+					() => void unJd(plugin, folder)
+				).open();
+			})
+	);
+
+	if (excluded) return;
 
 	const result = validateVault(plugin.app, settings);
 	const sys = result.systems.find(s => s.path === path);

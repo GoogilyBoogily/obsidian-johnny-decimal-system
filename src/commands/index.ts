@@ -6,6 +6,7 @@ import {registerCreateCategoryCommand} from './create-category';
 import {registerCreateIdCommand} from './create-id';
 import {registerNavigateCommand} from './navigate';
 import {registerGenerateJdexCommand} from './generate-jdex';
+import {registerRemovePrefixesCommand} from './remove-prefixes';
 
 export function registerCommands(plugin: JohnnyDecimalPlugin) {
 	registerValidateCommand(plugin);
@@ -15,4 +16,5 @@ export function registerCommands(plugin: JohnnyDecimalPlugin) {
 	registerCreateIdCommand(plugin);
 	registerNavigateCommand(plugin);
 	registerGenerateJdexCommand(plugin);
+	registerRemovePrefixesCommand(plugin);
 }
