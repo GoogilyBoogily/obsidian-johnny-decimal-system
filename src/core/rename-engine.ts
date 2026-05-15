@@ -99,7 +99,16 @@ export class RenameEngine {
 		const area = parseArea(parent.name);
 		const category = parseCategory(parent.name);
 
-		// --- Category slot: a folder living directly inside an Area ---
+		// --- The item is ITSELF an Area (range name) ---
+		// An "XX-YY Name" folder is structurally an Area wherever it sits.
+		// Never demote it to a category and never strip its range. Only
+		// cascade a system-prefix edit to its children when edited in place.
+		if (file instanceof TFolder && parseArea(file.name)) {
+			if (!moved) await this.propagateArea(file);
+			return;
+		}
+
+		// --- Category slot: a non-area folder directly inside an Area ---
 		if (area && file instanceof TFolder) {
 			await this.assignCategory(file, area);
 			return;
@@ -114,18 +123,11 @@ export class RenameEngine {
 			return;
 		}
 
-		// --- In-place prefix edit on an Area or Category → propagate down ---
-		if (!moved && file instanceof TFolder) {
-			const selfArea = parseArea(file.name);
-			if (selfArea) {
-				await this.propagateArea(file);
-				return;
-			}
-			const selfCat = parseCategory(file.name);
-			if (selfCat) {
-				await this.propagateCategory(file);
-				return;
-			}
+		// --- In-place prefix edit on a Category → propagate to ID children ---
+		// (Area self-edits are handled by the area short-circuit above.)
+		if (!moved && file instanceof TFolder && parseCategory(file.name)) {
+			await this.propagateCategory(file);
+			return;
 		}
 
 		// --- Moved out of the JD structure → strip prefix ---
