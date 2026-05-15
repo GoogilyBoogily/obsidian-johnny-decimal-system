@@ -1,6 +1,7 @@
 import {App, Notice, PluginSettingTab, Setting} from "obsidian";
 import type JohnnyDecimalPlugin from "./main";
 import {isValidSystemCode} from "./core/parser";
+import {jdexFullPath} from "./core/jdex";
 
 /** A registered system: code + display name. Folder path is derived. */
 export interface SettingsSystem {
@@ -29,6 +30,8 @@ export interface JDSettings {
 	autoPrefixEnabled: boolean;
 	/** Strip the JD prefix when an item is moved out of the JD structure. */
 	stripPrefixOnExit: boolean;
+	/** Keep the JDex file in sync automatically on create/rename/delete. */
+	autoSyncJdex: boolean;
 }
 
 export const DEFAULT_SETTINGS: JDSettings = {
@@ -39,6 +42,7 @@ export const DEFAULT_SETTINGS: JDSettings = {
 	jdexPath: 'JDex.md',
 	autoPrefixEnabled: true,
 	stripPrefixOnExit: true,
+	autoSyncJdex: true,
 };
 
 export class JDSettingTab extends PluginSettingTab {
@@ -191,8 +195,30 @@ export class JDSettingTab extends PluginSettingTab {
 				.setPlaceholder('JDex.md')
 				.setValue(this.plugin.settings.jdexPath)
 				.onChange(async (value) => {
+					const oldPath = jdexFullPath(this.plugin);
 					this.plugin.settings.jdexPath = value;
 					await this.plugin.saveSettings();
+					const newPath = jdexFullPath(this.plugin);
+					if (
+						oldPath !== newPath &&
+						this.plugin.app.vault.getAbstractFileByPath(oldPath)
+					) {
+						new Notice(`Old JDex left at "${oldPath}" — delete it manually if unwanted`);
+					}
+					this.plugin.jdexSync?.scheduleSync();
+				}));
+
+		new Setting(containerEl)
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setName('Auto-sync JDex')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setDesc('Regenerate the JDex automatically when items are created, renamed, moved, or deleted.')
+			.addToggle(toggle => toggle
+				.setValue(this.plugin.settings.autoSyncJdex)
+				.onChange(async (value) => {
+					this.plugin.settings.autoSyncJdex = value;
+					await this.plugin.saveSettings();
+					if (value) this.plugin.jdexSync?.scheduleSync();
 				}));
 	}
 }

@@ -3,12 +3,14 @@ import {DEFAULT_SETTINGS, JDSettings, JDSettingTab} from "./settings";
 import {registerCommands} from "./commands";
 import {validateVault} from "./core/validator";
 import {RenameEngine} from "./core/rename-engine";
+import {JdexSync} from "./core/jdex-sync";
 import {registerFileMenu} from "./ui/file-menu";
 import {NavigateModal} from "./ui/navigate-modal";
 
 export default class JohnnyDecimalPlugin extends Plugin {
 	settings: JDSettings;
 	engine: RenameEngine;
+	jdexSync: JdexSync;
 
 	async onload() {
 		await this.loadSettings();
@@ -30,6 +32,9 @@ export default class JohnnyDecimalPlugin extends Plugin {
 		});
 
 		registerFileMenu(this);
+
+		this.jdexSync = new JdexSync(this);
+		this.jdexSync.register();
 
 		// eslint-disable-next-line obsidianmd/ui/sentence-case
 		this.addRibbonIcon('folder-tree', 'Johnny Decimal navigation', () => {
