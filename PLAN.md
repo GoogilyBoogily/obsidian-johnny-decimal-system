@@ -37,6 +37,7 @@
 - [x] **Phase 1.x** — extracted `core/rename-queue.ts` (RenameQueue: `consumeEcho`/`enqueue`/`whenIdle`/`safeRename`) from RenameEngine; engine reuses it, behavior unchanged. Prereq for Phase 7. Lint+build+17 tests green.
 - [x] **Phase 1.5** — MODEL PIVOT: system-prefix-on-every-name → **system = top folder** + managed systems list. Clean unprefixed area/cat/ID names; system derived from path. Rewrote parser/validator; system-aware create-system/area + modals; settings systems manager; `defaultSystemPrefix`→`systems[]` migration; engine simplified (no system cascade — cross-system move = pure path change). Lint+build green.
 - [x] **Phase 6** — JDex auto-sync: shared `core/jdex.ts` (idempotent body-hash, `JD:START/END` managed region, atomic `vault.process`, foreign-content abort); `core/jdex-sync.ts` debounced (500ms resetTimer) on create/rename/delete (no `modify`), create post-`onLayoutReady`, gates (autoSyncJdex/own-path/excluded), unload flush; `generate-jdex` command reuses it; `autoSyncJdex` toggle + settings-change resync + orphaned-file Notice. Lint+build+17 tests green.
+- [ ] **Phase 7 v2** — automated audit fixes (design locked, in the Phase 7 section)
 - [x] **Phase 7 (v1)** — vault numbering audit: `core/auditor.ts` (own traversal + validateVault for system errors → declarative findings/fixes: PADDING, MISFILED_ID, DUPLICATE w/ lowest-path tiebreak, GAP=info-no-fix, SYSTEM=error-no-fix); `audit-apply.ts` via shared engine RenameQueue (deepest-first, re-resolve, no engine re-number); `AuditReportModal` (grouped, checkboxes, apply→re-audit loop); `audit-numbering` command. v2 (gap-fill, area-range remap opt-in) deferred. Lint+build+17 tests green.
 - [x] **Phase 2** — context-aware right-click menu: `file-menu` event, level-aware items (system→area→category→ID) opening preselected create modals; exclude/include toggle; shared `core/creators.ts` (commands + menu reuse, no duplication). Lint+build green.
 - [x] **Phase 3** — create-time prefixing: `RenameEngine.handleCreate` + `vault.on('create')` registered inside `workspace.onLayoutReady` (skips load storm); new folder/file in a JD slot auto-numbered via shared assign logic; structural/excluded items skipped. Lint+build green.
@@ -300,6 +301,74 @@ implementation instead of three copies. Small, isolated, do before Phase 7.
       manual-only? (Lean: manual command in v1; optional post-op nudge later.)
 - [ ] Gap INFO: surface always, or behind a "show gaps" toggle to reduce
       noise in large vaults? (Lean: behind toggle, default off.)
+
+## Phase 7 v2 — Automated Fixes (design)
+
+Goal: apply audit fixes without per-finding manual checkbox selection,
+without violating the no-silent-data-loss rule.
+
+### Safety tiers (auto-apply is gated by kind, not blanket)
+
+| Kind | Tier | Auto? | Reason |
+|------|------|-------|--------|
+| PADDING | SAFE | yes | Zero-pad only; no JD address change; links preserved via `fileManager.renameFile` |
+| MISFILED_ID (target free) | SAFE | yes | Moves to its correct number; target verified free; reversible |
+| MISFILED_ID (target occupied) | — | no | Already no `fix` in v1 — manual |
+| DUPLICATE | RISKY | only in `aggressive` mode | Silently changes a user note's JD address — needs explicit opt-in |
+| GAP | INFO | never | No fix; renumber = link risk |
+| SYSTEM | ERROR | never | No auto-fix; user must register/rename |
+
+Auditor sets a new `autoFixable: boolean` per finding: PADDING → true;
+MISFILED_ID → true iff target free; DUPLICATE → true only when the
+`aggressive` setting is on; others → false.
+
+### Setting
+
+`auditFixMode: 'off' | 'safe' | 'aggressive'` (default `'safe'`).
+- `off` — manual modal only (current v1 behavior).
+- `safe` — PADDING + free MISFILED_ID auto-eligible.
+- `aggressive` — additionally DUPLICATE (tiebreak renumber) auto-eligible.
+
+### Command + convergence loop
+
+New command **"Audit and fix"**:
+1. `auditVault` → filter `findings.filter(f => f.autoFixable && f.fix)`.
+2. If none → Notice "nothing to auto-fix". Else **ConfirmModal**:
+   "Apply N safe fixes? (K padding, M misfiled, …)" — one gate, not zero.
+3. On confirm → `applyFixes` (reuses v1: shared RenameQueue, deepest-first,
+   re-resolve) → re-audit → repeat.
+4. **Convergence guard:** max 5 passes; also bail early if a pass applies
+   0 fixes (a permanently-blocked fix, e.g. collision) to avoid an infinite
+   loop. Renames change paths, so re-audit between passes is required.
+5. Final Notice: "Fixed N; M issues remain — open Audit to review."
+
+### Modal addition
+
+`AuditReportModal` gains an **"Apply all safe"** button: checks every
+`autoFixable` finding then runs the same apply+re-audit loop. Keeps the
+existing per-finding checkboxes for selective manual fixing.
+
+### Deferred (documented risky)
+
+Event-driven auto-fix (run a SAFE pass automatically after vault changes,
+debounced like JDex-sync) is **not** in v2 — high blast radius, surprising
+silent renames. Revisit only behind `aggressive` + a separate explicit
+toggle, with the risk spelled out.
+
+### Build order
+
+1. `autoFixable` on `AuditFinding`; auditor sets it per tier (+ `aggressive`).
+2. `auditFixMode` setting + UI (off/safe/aggressive).
+3. "Audit and fix" command: ConfirmModal gate + convergence loop (max 5,
+   zero-progress bail) + summary Notice.
+4. "Apply all safe" button in `AuditReportModal`.
+
+### Open
+
+- [ ] Convergence cap 5 — enough for realistic vaults? (padding/misfiled
+      converge in 1–2 passes; cap is just a cycle safety net.)
+- [ ] Should `safe` be the default, or `off`? (Lean `safe`: padding/misfiled
+      are low-risk and the ConfirmModal still gates execution.)
 
 ## Phased Roadmap
 
