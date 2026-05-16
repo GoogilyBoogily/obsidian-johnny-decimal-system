@@ -184,7 +184,6 @@ export class JDSettingTab extends PluginSettingTab {
 			.setName('JDex path')
 			.setDesc('Path for the generated index file (relative to root folder)')
 			.addText(text => text
-				// eslint-disable-next-line obsidianmd/ui/sentence-case
 				.setPlaceholder('JDex.md')
 				.setValue(this.plugin.settings.jdexPath)
 				.onChange(async (value) => {

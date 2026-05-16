@@ -2,7 +2,7 @@
 	"id": "johnny-decimal",
 	"name": "Johnny Decimal System",
 	"version": "1.0.0",
-	"minAppVersion": "0.15.0",
+	"minAppVersion": "1.5.0",
 	"description": "Validate, create, and navigate Johnny Decimal organizational structures in your vault.",
 	"author": "googboog",
 	"authorUrl": "",

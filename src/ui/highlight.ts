@@ -14,7 +14,7 @@ export function flashPath(path: string): void {
 			typeof CSS !== 'undefined' && CSS.escape
 				? CSS.escape(path)
 				: path.replace(/"/g, '\\"');
-		const el = document.querySelector<HTMLElement>(
+		const el = activeDocument.querySelector<HTMLElement>(
 			`.nav-file-title[data-path="${safe}"], .nav-folder-title[data-path="${safe}"]`
 		);
 		if (!el) return;
