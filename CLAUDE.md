@@ -1,93 +1,118 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code working in this repository.
 
 ## Project Overview
 
-Obsidian plugin for implementing the Johnny Decimal organizational system. Built with TypeScript and esbuild, targeting the Obsidian Plugin API.
+Obsidian plugin implementing the Johnny Decimal system. TypeScript + esbuild,
+Obsidian Plugin API. An always-on engine auto-numbers items on
+create/move/rename; supporting commands validate, audit, navigate, and index.
 
 ## Commands
 
 ```bash
-npm install          # Install dependencies
-npm run dev          # Build with watch mode (development)
-npm run build        # Production build (type-check + minified bundle)
-npm run lint         # Run ESLint
+npm install      # deps
+npm run dev      # watch build
+npm run build    # tsc -noEmit -skipLibCheck && esbuild production
+npm run lint     # eslint . (eslint-plugin-obsidianmd)
+npm test         # node --test + tsx (parser + exclusions suites)
 ```
 
-## Johnny Decimal Structure
+## Johnny Decimal Structure (system-as-folder model)
 
-The plugin manages a 4-level hierarchy, each level mapping to folders/files in the vault:
+| Level    | Format            | Vault representation             |
+|----------|-------------------|----------------------------------|
+| System   | `CODE Name` (opt) | Top-level folder (`H01 Personal`)|
+| Area     | `XX-YY Name`      | Folder inside a system / at root  |
+| Category | `XX Name`         | Folder inside an area             |
+| ID       | `XX.YY Name`      | `.md` inside a category           |
 
-| Level    | Format           | Example               | Vault representation |
-|----------|------------------|-----------------------|----------------------|
-| System   | `SYS` (optional) | `H01`                | Prefix on all names  |
-| Area     | `XX-YY Name`     | `10-19 Life admin`   | Folder               |
-| Category | `XX Name`        | `11 Travel`          | Folder inside area   |
-| ID       | `XX.YY Name`     | `11.01 NYC Trip`     | `.md` file in category |
-
-Systems are optional — single-system vaults omit the prefix. Multi-system vaults prepend it: `H01.10-19 Life admin`.
+**Names are CLEAN — no system prefix in any name.** The system is derived from
+the folder path. Single-system = no registered systems, areas at root.
+Multi-system = registered `systems` list, each a `CODE Name` folder. Full ID
+(`H01.11.01`) is composed for display/links only (`formatFullId`).
 
 ## Architecture
 
-**Entry point:** `src/main.ts` → bundled to `main.js`
+**Entry point:** `src/main.ts` → bundled to `main.js`.
 
 ```
 src/
-  main.ts              # Plugin lifecycle, ribbon icon, openNavigateModal()
-  settings.ts          # JDSettings interface, defaults, settings tab
-  types.ts             # JDArea, JDCategory, JDId, validation types
-  commands/
-    index.ts           # registerCommands() — wires all commands to plugin
-    create-system.ts   # Create system prefix folder
-    create-area.ts     # Create area (XX-YY range folder)
-    create-category.ts # Create category (XX folder inside area)
-    create-id.ts       # Create ID (XX.YY note inside category)
-    navigate.ts        # Open navigate modal
-    validate.ts        # Run vault validation
-    generate-jdex.ts   # Generate JDex index file
+  main.ts              # lifecycle: settings load+migrate, register commands,
+                        # RenameEngine (rename + create-after-onLayoutReady),
+                        # file-menu, JdexSync, ribbon
+  settings.ts          # JDSettings, defaults, migrations, settings tab
+  types.ts             # JD*, Parsed*, Validation*, Audit* types
+  commands/            # one file per command, registered via index.ts
+    create-{system,area,category,id}.ts  navigate.ts  validate.ts
+    generate-jdex.ts  remove-prefixes.ts  audit.ts  audit-fix.ts
   core/
-    parser.ts          # Regex parsing, formatting, sanitization (shared logic)
-    validator.ts       # Vault scanning, structure validation
+    parser.ts          # regex parse/format/sanitize (pure, no obsidian dep)
+    validator.ts       # system-aware structural scan → ValidationResult
+    exclusions.ts      # isExcluded(): exact + subtree + minimal glob (pure)
+    rename-queue.ts    # RenameQueue: echo-guard + serialized chain + safeRename
+    rename-engine.ts   # RenameEngine: auto-prefix on rename/create/move
+    creators.ts        # shared create{System,Area,Category,Id}/createNext*
+    strip.ts           # unJd(): exclude folder + strip descendant prefixes
+    jdex.ts            # buildBody + idempotent writeJdex (managed region)
+    jdex-sync.ts       # JdexSync: debounced auto-regen on vault events
+    auditor.ts         # auditVault(): numbering findings + declarative fixes
+    audit-apply.ts     # applyFixes / autoFixLoop via shared RenameQueue
   ui/
-    create-system-modal.ts
-    create-area-modal.ts
-    create-category-modal.ts
-    create-id-modal.ts
-    navigate-modal.ts
-    validation-report-modal.ts
+    *-modal.ts  file-menu.ts  highlight.ts  name-prompt-modal.ts
+test/
+  parser.test.ts  exclusions.test.ts   # node --test, eslint-ignored
 ```
 
-**Data flow:** `main.ts` → `commands/` (register + handle) → `ui/` (modal interaction) → `core/` (parsing, validation, formatting)
+**Data flow:** vault events → `RenameEngine`/`JdexSync` (via `RenameQueue`);
+commands → `ui/` modals → `core/creators`/`auditor` → `RenameQueue`.
 
-**Build output:** `main.js`, `manifest.json`, `styles.css` are required for Obsidian to load the plugin.
+**Build output:** `main.js` + `manifest.json` + `styles.css`.
 
 ## Key Patterns
 
-- **Focused modals:** Each creation step has its own modal class (not polymorphic). Modals receive parsed JD data and an `onSubmit` callback.
-- **parser.ts as shared logic:** All regex patterns, name formatting (`formatAreaName`, `formatCategoryName`, `formatIdName`), and `sanitizeName()` live here. Use it for any name parsing or generation.
-- **System prefix as `string | null`:** All types and parser functions use `string | null` — null means single-system vault.
-- **Dropdown rebuilds:** Category/range dropdowns are rebuilt by clearing a DOM container div, not via `Setting.clear()` (which is unreliable).
-- **Used items skipped:** Dropdowns for area ranges and category numbers omit already-used values entirely.
+- **Clean names, path-derived system.** Never put a system code in an
+  area/category/ID name. `parser.ts` is the only place for regex/format.
+- **RenameQueue is the single rename primitive.** Engine, audit-apply, and
+  strip all route renames through `plugin.engine.queue` so the echo-guard
+  (`consumeEcho`) + serialized `chain` are shared — nothing re-numbers
+  another subsystem's writes. `whenIdle()` to await drain.
+- **Exclusion is subtree-inclusive** and gates every subsystem
+  (`isExcluded(path, settings.exclusions)`).
+- **Idempotent JDex.** Hash only the structural body; skip the write when
+  unchanged. `modify` is intentionally NOT watched (kills self-write loop);
+  `create` is registered inside `workspace.onLayoutReady` (skips load storm).
+- **Audit fixes are declarative** (`FixAction.renames`), applied deepest-path
+  first, targets re-resolved at exec time. `autoFixable` set by one auditor
+  post-pass per safety tier × `auditFixMode`.
+- **No backward-compat shims** (user rule). Old settings keys are dropped via
+  one-time migrations in `main.ts loadSettings`.
+- **Engine numbering policy:** highest-existing + 1; never reuse a deleted
+  number; never auto-close gaps (link safety).
 
 ## ESLint
 
-Uses `eslint-plugin-obsidianmd`. The `obsidianmd/ui/sentence-case` rule flags proper nouns like "Johnny Decimal", "JD", and "JDex". Disable per-line:
+`eslint-plugin-obsidianmd`. `obsidianmd/ui/sentence-case` flags proper nouns
+("Johnny Decimal", "JD", "JDex"). Disable on the line *immediately preceding
+the flagged string literal* (not the `new Setting(...)` line):
 
 ```ts
 // eslint-disable-next-line obsidianmd/ui/sentence-case
-.setName('Johnny Decimal')
+.setDesc('… JDex …')
 ```
+
+Template literals are not flagged (only plain string literals).
 
 ## Testing
 
-Copy build artifacts to vault for manual testing:
 ```bash
-cp main.js manifest.json styles.css <Vault>/.obsidian/plugins/sample-plugin/
+npm test   # parser + exclusions unit suites (pure modules)
+# manual: cp main.js manifest.json styles.css \
+#   <Vault>/.obsidian/plugins/johnny-decimal/   (folder = plugin id)
 ```
-Then reload Obsidian and enable the plugin.
 
 ## References
 
-- See `AGENTS.md` for detailed Obsidian plugin development conventions
+- `PLAN.md` — phased roadmap + locked design decisions (Phases 0–7).
+- `AGENTS.md` — Obsidian plugin dev conventions.
 - API docs: https://docs.obsidian.md
