@@ -88,6 +88,9 @@ export interface AuditFinding {
 	path: string;
 	message: string;
 	fix?: FixAction; // absent = informational / not auto-fixable
+	// Set by the auditor (one post-pass) per kind-based safety tier + the
+	// active auditFixMode. Absent/false = not eligible for unattended apply.
+	autoFixable?: boolean;
 }
 
 export interface AuditReport {

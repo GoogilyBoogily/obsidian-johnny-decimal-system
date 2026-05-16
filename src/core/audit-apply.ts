@@ -8,6 +8,9 @@
 
 import type JohnnyDecimalPlugin from '../main';
 import type {FixAction} from '../types';
+import {auditVault} from './auditor';
+
+const MAX_PASSES = 5;
 
 export async function applyFixes(
 	plugin: JohnnyDecimalPlugin,
@@ -32,4 +35,28 @@ export async function applyFixes(
 
 	await queue.whenIdle();
 	return counter.applied;
+}
+
+/**
+ * Re-audit → apply every autoFixable finding → repeat, until none remain or
+ * a pass makes no progress (collision/cycle) or the pass cap is hit. Renames
+ * change paths, so re-auditing between passes is required.
+ */
+export async function autoFixLoop(
+	plugin: JohnnyDecimalPlugin
+): Promise<{fixed: number; remaining: number}> {
+	let fixed = 0;
+	for (let pass = 0; pass < MAX_PASSES; pass++) {
+		const report = auditVault(plugin.app, plugin.settings);
+		const fixes = report.findings
+			.filter(f => f.autoFixable && f.fix)
+			.map(f => f.fix!);
+		if (fixes.length === 0) break;
+
+		const n = await applyFixes(plugin, fixes);
+		fixed += n;
+		if (n === 0) break; // zero-progress — blocked, stop looping
+	}
+	const final = auditVault(plugin.app, plugin.settings);
+	return {fixed, remaining: final.findings.length};
 }

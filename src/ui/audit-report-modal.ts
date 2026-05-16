@@ -2,7 +2,7 @@ import {App, Modal, Setting, Notice} from 'obsidian';
 import type JohnnyDecimalPlugin from '../main';
 import type {AuditReport, AuditFinding, AuditSeverity} from '../types';
 import {auditVault} from '../core/auditor';
-import {applyFixes} from '../core/audit-apply';
+import {applyFixes, autoFixLoop} from '../core/audit-apply';
 
 const ORDER: AuditSeverity[] = ['error', 'warn', 'info'];
 const LABEL: Record<AuditSeverity, string> = {
@@ -67,8 +67,16 @@ export class AuditReportModal extends Modal {
 		}
 
 		const hasFixable = f.some(x => x.fix);
+		const autoCount = f.filter(x => x.autoFixable && x.fix).length;
 		const bar = new Setting(contentEl);
 		bar.addButton(b => b.setButtonText('Close').onClick(() => this.close()));
+		if (autoCount > 0) {
+			bar.addButton(b =>
+				b
+					.setButtonText(`Apply all safe (${autoCount})`)
+					.onClick(() => void this.applyAllSafe())
+			);
+		}
 		if (hasFixable) {
 			bar.addButton(b =>
 				b
@@ -77,6 +85,16 @@ export class AuditReportModal extends Modal {
 					.onClick(() => void this.apply())
 			);
 		}
+	}
+
+	private async applyAllSafe() {
+		this.close();
+		const {fixed, remaining} = await autoFixLoop(this.plugin);
+		new Notice(
+			`Fixed ${fixed}; ${remaining} issue${remaining === 1 ? '' : 's'} remain`
+		);
+		const next = auditVault(this.plugin.app, this.plugin.settings);
+		new AuditReportModal(this.app, this.plugin, next).open();
 	}
 
 	private async apply() {

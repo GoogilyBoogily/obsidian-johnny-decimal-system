@@ -31,6 +31,12 @@ export interface JDSettings {
 	stripPrefixOnExit: boolean;
 	/** Keep the JDex file in sync automatically on create/rename/delete. */
 	autoSyncJdex: boolean;
+	/**
+	 * Which audit fixes "Audit and fix" / "Apply all safe" may apply
+	 * unattended. off = manual modal only; safe = padding + free misfiled-ID;
+	 * aggressive = also duplicate renumber (changes a note's JD address).
+	 */
+	auditFixMode: 'off' | 'safe' | 'aggressive';
 }
 
 export const DEFAULT_SETTINGS: JDSettings = {
@@ -41,6 +47,7 @@ export const DEFAULT_SETTINGS: JDSettings = {
 	autoPrefixEnabled: true,
 	stripPrefixOnExit: true,
 	autoSyncJdex: true,
+	auditFixMode: 'safe',
 };
 
 export class JDSettingTab extends PluginSettingTab {
@@ -205,6 +212,21 @@ export class JDSettingTab extends PluginSettingTab {
 					this.plugin.settings.autoSyncJdex = value;
 					await this.plugin.saveSettings();
 					if (value) this.plugin.jdexSync?.scheduleSync();
+				}));
+
+		new Setting(containerEl)
+			.setName('Audit auto-fix mode')
+			// eslint-disable-next-line obsidianmd/ui/sentence-case
+			.setDesc('Which numbering fixes "Audit and fix" applies without per-item selection. Off: manual only. Safe: padding + misfiled IDs with a free slot. Aggressive: also renumber duplicates (changes a note’s ID).')
+			.addDropdown(dd => dd
+				.addOption('off', 'Off (manual only)')
+				.addOption('safe', 'Safe')
+				.addOption('aggressive', 'Aggressive')
+				.setValue(this.plugin.settings.auditFixMode)
+				.onChange(async (value) => {
+					this.plugin.settings.auditFixMode =
+						value as 'off' | 'safe' | 'aggressive';
+					await this.plugin.saveSettings();
 				}));
 	}
 }

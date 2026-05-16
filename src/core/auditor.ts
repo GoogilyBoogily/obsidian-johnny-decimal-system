@@ -64,6 +64,17 @@ export function auditVault(app: App, settings: JDSettings): AuditReport {
 		}
 	}
 
+	// One post-pass: tag auto-fix eligibility per kind-based safety tier.
+	const mode = settings.auditFixMode;
+	for (const f of findings) {
+		f.autoFixable =
+			!!f.fix &&
+			mode !== 'off' &&
+			(f.kind === 'PADDING' ||
+				f.kind === 'MISFILED_ID' || // fix only present when target free
+				(f.kind === 'DUPLICATE' && mode === 'aggressive'));
+	}
+
 	return {findings};
 }
 
